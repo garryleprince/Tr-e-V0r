@@ -1,0 +1,166 @@
+/**
+ * Design tokens — same philosophy as BoxingCoach: a near-black canvas designed
+ * first, one accent reserved for the main action, typographic hierarchy doing
+ * the work that borders would otherwise do. The light theme is a deliberate
+ * palette, not an inversion.
+ *
+ * Colour jobs are kept apart (validated with the dataviz palette validator,
+ * adjacent and all-pairs, both themes):
+ * - accent (violet): actions and navigation — never a market meaning;
+ * - direction (blue up / orange down): candles, price changes, always with ▲ ▼;
+ * - outcome (green good / red bad): P&L and states, always with a sign or icon.
+ * Green/red is NOT used for up/down candles: that pair fails deuteranopia (ΔE 3.9).
+ */
+
+:root {
+  --ink-0: #08090b;
+  --ink-1: #0e1014;
+  --ink-2: #15181e;
+  --ink-3: #1d2129;
+  --ink-4: #2a2f39;
+  --line: #262b34;
+  --line-soft: #1a1e25;
+
+  --text-1: #f4f5f7;
+  --text-2: #a9afba;
+  --text-3: #767c88;
+
+  --accent: #7466ee;
+  --accent-hot: #8579f3;
+  --accent-soft: #9085e9;
+  --accent-dim: rgba(144, 133, 233, 0.14);
+  --accent-line: rgba(144, 133, 233, 0.38);
+  --on-accent: #ffffff;
+
+  --up: #3987e5;
+  --down: #d95926;
+  --up-dim: rgba(57, 135, 229, 0.14);
+  --down-dim: rgba(217, 89, 38, 0.14);
+  --series-3: #199e70;
+  --series-muted: #767c88;
+
+  --good: #3ecf8e;
+  --good-dim: rgba(62, 207, 142, 0.13);
+  --bad: #f06b6b;
+  --bad-dim: rgba(240, 107, 107, 0.13);
+  --warn: #f5b43c;
+  --warn-dim: rgba(245, 180, 60, 0.14);
+  --critical: #d03b3b;
+
+  --chart-surface: #0e1014;
+  --chart-grid: #1c2027;
+  --chart-axis: #767c88;
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-num: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+
+  --t-hero: 2.75rem;
+  --t-display: 2rem;
+  --t-title: 1.3125rem;
+  --t-body: 1rem;
+  --t-small: 0.875rem;
+  --t-micro: 0.75rem;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-full: 999px;
+
+  --shadow-2: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --tabbar-h: 58px;
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --ink-0: #f6f7f9;
+    --ink-1: #ffffff;
+    --ink-2: #f1f3f6;
+    --ink-3: #e8ebf0;
+    --ink-4: #d9dee6;
+    --line: #dfe3ea;
+    --line-soft: #ebeef3;
+    --text-1: #11141a;
+    --text-2: #525a67;
+    --text-3: #7d8594;
+    --accent: #5b4cdb;
+    --accent-hot: #4d3fc9;
+    --accent-soft: #4a3aa7;
+    --accent-dim: rgba(91, 76, 219, 0.1);
+    --accent-line: rgba(91, 76, 219, 0.32);
+    --up: #2a78d6;
+    --down: #eb6834;
+    --up-dim: rgba(42, 120, 214, 0.1);
+    --down-dim: rgba(235, 104, 52, 0.1);
+    --series-3: #1baf7a;
+    --good: #0f8a4a;
+    --good-dim: rgba(15, 138, 74, 0.1);
+    --bad: #c62d2d;
+    --bad-dim: rgba(198, 45, 45, 0.09);
+    --warn: #a86a00;
+    --warn-dim: rgba(168, 106, 0, 0.1);
+    --chart-surface: #ffffff;
+    --chart-grid: #eceef2;
+    --chart-axis: #7d8594;
+    --shadow-2: 0 12px 32px rgba(16, 22, 34, 0.12);
+    color-scheme: light;
+  }
+}
+
+:root[data-theme='light'] {
+  --ink-0: #f6f7f9;
+  --ink-1: #ffffff;
+  --ink-2: #f1f3f6;
+  --ink-3: #e8ebf0;
+  --ink-4: #d9dee6;
+  --line: #dfe3ea;
+  --line-soft: #ebeef3;
+  --text-1: #11141a;
+  --text-2: #525a67;
+  --text-3: #7d8594;
+  --accent: #5b4cdb;
+  --accent-hot: #4d3fc9;
+  --accent-soft: #4a3aa7;
+  --accent-dim: rgba(91, 76, 219, 0.1);
+  --accent-line: rgba(91, 76, 219, 0.32);
+  --up: #2a78d6;
+  --down: #eb6834;
+  --up-dim: rgba(42, 120, 214, 0.1);
+  --down-dim: rgba(235, 104, 52, 0.1);
+  --series-3: #1baf7a;
+  --good: #0f8a4a;
+  --good-dim: rgba(15, 138, 74, 0.1);
+  --bad: #c62d2d;
+  --bad-dim: rgba(198, 45, 45, 0.09);
+  --warn: #a86a00;
+  --warn-dim: rgba(168, 106, 0, 0.1);
+  --chart-surface: #ffffff;
+  --chart-grid: #eceef2;
+  --chart-axis: #7d8594;
+  --shadow-2: 0 12px 32px rgba(16, 22, 34, 0.12);
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 1ms;
+    --dur: 1ms;
+  }
+}

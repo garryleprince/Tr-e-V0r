@@ -31,3 +31,10 @@ La liste complète et à jour est générée à partir de `package.json`. Princi
 | hono | MIT | |
 | @anthropic-ai/sdk | MIT | |
 | lightweight-charts (TradingView) | Apache-2.0 | **Attribution TradingView requise** : conservée via l'option `attributionLogo` et la page « À propos ». Voir https://www.tradingview.com/ |
+
+## Outils de développement (non distribués avec l'application)
+
+| Paquet | Licence | Usage |
+| --- | --- | --- |
+| playwright-core (Microsoft) | Apache-2.0 | Parcours e2e sur iPhone émulé et génération des icônes PNG |
+| vite, vitest, typescript, wrangler | MIT / Apache-2.0 | Build, tests, typage, Worker local |
