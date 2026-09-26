@@ -1,0 +1,51 @@
+{
+  // Worker unique : PWA (actifs statiques), API /api/*, tâches planifiées et
+  // Durable Object TradingDesk. Voir docs/ARCHITECTURE.md.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tr-e-v0r",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "assets": {
+    "directory": "./dist",
+    // Routage par hash côté client : seule `/` est demandée. Les chemins /api/*
+    // sont toujours traités par le Worker, jamais par les actifs.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+    "binding": "ASSETS"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tr-e-v0r",
+      // Remplacer par l'identifiant renvoyé par `wrangler d1 create tr-e-v0r`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "DESK", "class_name": "TradingDesk" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TradingDesk"] }],
+
+  "triggers": {
+    // Toutes les 15 min : surveillance des positions (stops, objectifs, horizon, drawdown).
+    // 00:07 UTC : cycle d'analyse quotidien (après la clôture de la bougie journalière crypto).
+    // 21:37 UTC en semaine : cycle d'analyse des actions US après la clôture.
+    "crons": ["*/15 * * * *", "7 0 * * *", "37 21 * * 1-5"]
+  },
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    // Doit rester "false" en V0.1 : aucun adaptateur de venue réelle n'existe.
+    "LIVE_TRADING_ENABLED": "false",
+    // "halt" force l'arrêt d'urgence de toute opération, quel que soit l'état stocké.
+    "KILL_SWITCH": "off",
+    // "live" en production. "fixture" n'est accepté qu'en développement local.
+    "MARKET_DATA_MODE": "live"
+  }
+}

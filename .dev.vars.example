@@ -1,0 +1,20 @@
+# Copier en .dev.vars pour le développement local (fichier ignoré par Git).
+# En production, chaque valeur est un secret : `npx wrangler secret put NOM`.
+
+ENVIRONMENT=development
+# Jeton demandé une seule fois à la création du compte propriétaire.
+SETUP_TOKEN=remplacer-par-une-longue-valeur-aleatoire
+# Sert à hacher les IP pour la limitation des tentatives de connexion.
+SESSION_PEPPER=remplacer-par-une-autre-valeur-aleatoire
+
+# Cerveau IA (facultatif : sans clé, les agents à règles sont utilisés).
+ANTHROPIC_API_KEY=
+# Fournisseur OpenAI-compatible (GPT, Gemini, Ollama, vLLM, LM Studio, OpenRouter).
+OPENAI_COMPATIBLE_API_KEY=
+
+# Actions et ETF (facultatif) : https://www.alphavantage.co/support/#api-key
+ALPHAVANTAGE_API_KEY=
+
+# "fixture" : données historiques enregistrées, pour développer hors ligne.
+# Refusé si ENVIRONMENT=production. L'interface affiche alors un bandeau rouge.
+MARKET_DATA_MODE=live
