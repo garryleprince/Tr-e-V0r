@@ -140,6 +140,21 @@ describe('métriques', () => {
     expect(m.winRate).toBeNull();
   });
 
+  it('pas de ratio annualisé sur trop peu de données (le « Sharpe −130 » de 3 relevés)', () => {
+    const few = [10_000, 9_990, 9_997].map((equity, i) => ({ t: i * 5_000, equity }));
+    const m = computeMetrics(few, [], 35_040);
+    expect(m.sharpe).toBeNull();
+    expect(m.sortino).toBeNull();
+    expect(m.volatility).toBeNull();
+    expect(m.cagr).toBeNull();
+    expect(m.totalReturn).toBeCloseTo(-0.0003, 10); // a plain return is still reported
+
+    const enough = Array.from({ length: 60 }, (_, i) => ({ t: i * DAY_MS, equity: 100 * (1 + 0.001 * i + (i % 3 === 0 ? -0.002 : 0)) }));
+    const m2 = computeMetrics(enough, [], 365);
+    expect(m2.sharpe).not.toBeNull();
+    expect(m2.cagr).not.toBeNull();
+  });
+
   it('drawdown d’une courbe croissante nul', () => {
     expect(drawdown([1, 2, 3].map((equity, t) => ({ t, equity }))).maxDrawdown).toBe(0);
   });

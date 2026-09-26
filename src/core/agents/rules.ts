@@ -41,7 +41,7 @@ export class RuleBasedTechnicalAnalyst implements AnalystAgent {
       `Tendance ${TREND_LABELS[s.trend]}, volatilité ${VOL_LABELS[s.volatilityRegime]}.`,
       `Score technique ${formatSigned(s.technicalScore)} sur une échelle de −1 à +1.`,
     ];
-    if (s.rsi14 !== null) parts.push(`RSI 14 à ${s.rsi14.toFixed(1)}.`);
+    if (s.rsi14 !== null) parts.push(`RSI 14 à ${fr(s.rsi14, 1)}.`);
     if (s.warnings.length > 0) parts.push(`Limites : ${s.warnings.join(' ; ')}.`);
     return {
       agent: 'technical',
@@ -108,17 +108,17 @@ export function ruleProposal(s: TechnicalSnapshot, holding: boolean): TradePropo
       sizePctOfEquity: null,
       mainScenario: {
         title: 'Poursuite de la tendance',
-        description: `La tendance haussière se prolonge vers ${round(entry + RULES.targetAtr * atr, 2)} (3 ATR).`,
+        description: `La tendance haussière se prolonge vers ${fr(entry + RULES.targetAtr * atr)} (3 ATR).`,
         probability: round(clamp(0.45 + score / 4, 0, 1), 2),
       },
       altScenario: {
         title: 'Retournement',
-        description: `Le prix revient sous ${round(entry - RULES.stopAtr * atr, 2)} (2 ATR) et le stop coupe la position.`,
+        description: `Le prix revient sous ${fr(entry - RULES.stopAtr * atr)} (2 ATR) et le stop coupe la position.`,
         probability: round(clamp(0.55 - score / 4, 0, 1), 2),
       },
       keyFactors: factors,
-      invalidation: `Clôture sous le stop à ${round(entry - RULES.stopAtr * atr, 2)} ou passage en tendance baissière.`,
-      rationale: `Règle de suivi de tendance : tendance haussière, score ${formatSigned(score)} ≥ ${RULES.buyScore}, RSI sous ${RULES.maxRsiForEntry}, volatilité hors extrêmes. Stop à ${RULES.stopAtr} ATR, objectif à ${RULES.targetAtr} ATR.`,
+      invalidation: `Clôture sous le stop à ${fr(entry - RULES.stopAtr * atr)} ou passage en tendance baissière.`,
+      rationale: `Règle de suivi de tendance : tendance haussière, score ${formatSigned(score)} ≥ ${fr(RULES.buyScore, 1)}, RSI sous ${RULES.maxRsiForEntry}, volatilité hors extrêmes. Stop à ${RULES.stopAtr} ATR, objectif à ${RULES.targetAtr} ATR.`,
     };
   }
 
@@ -143,7 +143,7 @@ export function ruleProposal(s: TechnicalSnapshot, holding: boolean): TradePropo
       },
       keyFactors: factors,
       invalidation: 'Reprise au-dessus de la moyenne mobile 50 avec une pente positive.',
-      rationale: `Règle de sortie : ${s.trend === 'down' ? 'tendance baissière' : `score ${formatSigned(score)} ≤ ${RULES.sellScore}`}.`,
+      rationale: `Règle de sortie : ${s.trend === 'down' ? 'tendance baissière' : `score ${formatSigned(score)} ≤ ${fr(RULES.sellScore, 1)}`}.`,
     };
   }
 
@@ -183,5 +183,17 @@ const FACTOR_LABELS: Record<string, string> = {
 };
 
 function formatSigned(v: number): string {
-  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
+  return `${v >= 0 ? '+' : '−'}${fr(Math.abs(v))}`;
+}
+
+const FR = new Map<number, Intl.NumberFormat>();
+
+/** French number for texts shown to the owner: 91 632,77 rather than 91632.77. */
+function fr(v: number, digits = 2): string {
+  let f = FR.get(digits);
+  if (!f) {
+    f = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    FR.set(digits, f);
+  }
+  return f.format(v);
 }

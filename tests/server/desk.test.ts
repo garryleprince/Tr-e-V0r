@@ -101,6 +101,18 @@ describe('cycle d’analyse de bout en bout (sans clé IA : agents à règles)',
     expect(await openPositions(db, 'PAPER')).toHaveLength(0);
   });
 
+  it('un cycle planifié ne réanalyse pas une bougie déjà analysée (pas de dépense IA en double)', async () => {
+    const { deps, c } = await setup({ research: true });
+    const first = await runAnalysis(deps, 'coinbase:BTC-USD', 'schedule');
+    expect(first.status).toBe('completed');
+    c.advance(6 * 3_600_000); // same UTC day: no new daily bar has closed
+    const second = await runAnalysis(deps, 'coinbase:BTC-USD', 'schedule');
+    expect(second.status).toBe('skipped');
+    expect(second.note).toMatch(/nouvelle bougie/);
+    // A manual request is always honoured.
+    expect((await runAnalysis(deps, 'coinbase:BTC-USD', 'manual')).status).toBe('completed');
+  });
+
   it('reprendre après un kill switch exige une ré-authentification', async () => {
     const { desk } = await setup();
     await desk.setTradingState('HALTED' as never, 'test', false);

@@ -79,6 +79,12 @@ describe('Risk Engine — ouvertures', () => {
     expect(r.order!.quantity).toBe(0.5);
   });
 
+  it('un simple arrondi au pas de quantité n’est pas une réduction du risque', () => {
+    const r = evaluateIntent(buy({ quantity: 0.50004 }), state());
+    expect(r.verdict.outcome).toBe('APPROVED');
+    expect(r.order!.quantity).toBe(0.5);
+  });
+
   it('réduit la quantité au risque par trade (1 % du capital au stop)', () => {
     // risk budget 100 $, 120 $ per unit → 0.8333 ; position cap 20 % → 1.0 ; requested 5
     const r = evaluateIntent(buy({ quantity: 5 }), state());

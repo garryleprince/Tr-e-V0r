@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HARD_CAPS } from './caps';
 
 /**
  * Risk limits.
@@ -9,20 +10,7 @@ import { z } from 'zod';
  * re-authentication (enforced by the API layer with `isLoosening`).
  */
 
-export const HARD_CAPS = {
-  maxRiskPerTradePct: 5,
-  maxPositionPct: 100,
-  maxGrossExposurePct: 100, // no leverage
-  maxOpenPositions: 20,
-  maxDailyLossPct: 20,
-  maxDrawdownPct: 50,
-  maxNewOrdersPerDay: 50,
-  maxAtrPct: 50,
-  maxSpreadBps: 500,
-  maxCorrelation: 1,
-  maxStopDistancePct: 50,
-  llmDailyBudgetUsd: 100,
-} as const;
+export { HARD_CAPS };
 
 export const RiskLimitsSchema = z.strictObject({
   maxRiskPerTradePct: z.number().gt(0).max(HARD_CAPS.maxRiskPerTradePct),
@@ -108,25 +96,4 @@ export function looseningChanges(current: RiskLimits, next: RiskLimits): string[
   ];
 }
 
-export const RISK_LIMIT_LABELS: Readonly<Record<keyof RiskLimits, string>> = {
-  maxRiskPerTradePct: 'Risque maximal par trade (% du capital)',
-  maxPositionPct: 'Taille maximale d’une position (% du capital)',
-  maxGrossExposurePct: 'Exposition totale maximale (% du capital)',
-  maxOpenPositions: 'Positions simultanées maximales',
-  maxDailyLossPct: 'Perte journalière maximale (%)',
-  maxDrawdownPct: 'Drawdown maximal avant coupure (%)',
-  maxConsecutiveLosses: 'Pertes consécutives avant pause',
-  cooldownHours: 'Durée de la pause après pertes (heures)',
-  maxAtrPct: 'Volatilité maximale (ATR en % du prix)',
-  minConfidence: 'Confiance minimale de l’IA',
-  minRewardRisk: 'Rapport gain/risque minimal',
-  minStopDistanceAtr: 'Distance minimale du stop (en ATR)',
-  maxStopDistancePct: 'Distance maximale du stop (%)',
-  maxEntryDeviationPct: 'Écart maximal entrée / marché (%)',
-  maxCorrelation: 'Corrélation maximale entre positions',
-  minAvgDollarVolume: 'Liquidité minimale (volume moyen par bougie, $)',
-  maxParticipationPct: 'Part maximale du volume moyen (%)',
-  maxSpreadBps: 'Spread maximal (points de base)',
-  maxNewOrdersPerDay: 'Nouveaux ordres maximum par jour',
-  maxDataAgeBars: 'Âge maximal des données (en bougies)',
-};
+export { RISK_LIMIT_LABELS } from '../labels';

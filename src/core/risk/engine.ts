@@ -463,6 +463,17 @@ function evaluateReduction(intent: OrderIntent, s: RiskState): RiskEvaluation {
           ? `Quantité limitée à la position détenue (${round(heldQty, 8)})`
           : 'Réduction dans la limite de la position',
   });
+  if (heldQty > 0 && intent.quantity > heldQty) {
+    checks.push({
+      rule: 'held_quantity',
+      label: 'Quantité détenue',
+      passed: false,
+      severity: 'resize',
+      value: round(intent.quantity, 8),
+      limit: round(heldQty, 8),
+      message: `Vente ramenée à la quantité détenue (${round(heldQty, 8)})`,
+    });
+  }
   return conclude(intent, checks, intent.quantity, approved, null);
 }
 
@@ -492,7 +503,9 @@ function conclude(
   requiredTradingState: TradingState | null,
 ): RiskEvaluation {
   const blocked = checks.filter((c) => c.severity === 'block' && !c.passed);
-  const resized = approved > 0 && approved < requested;
+  // RESIZED means a limit actually bound. Rounding down to the venue's size
+  // increment is not a risk decision and must not read as one in the journal.
+  const resized = approved > 0 && approved < requested && checks.some((c) => c.severity === 'resize' && !c.passed);
   const outcome: RiskOutcome = blocked.length > 0 ? 'REJECTED' : resized ? 'RESIZED' : 'APPROVED';
   const summary =
     outcome === 'REJECTED'

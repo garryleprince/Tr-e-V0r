@@ -40,6 +40,14 @@ export interface PerformanceMetrics {
   readonly monthly: readonly { readonly month: string; readonly return: number }[];
 }
 
+/**
+ * Below these, annualised figures are noise dressed as precision: 3 returns
+ * 10 seconds apart can "annualise" to a Sharpe of −130. They are reported as
+ * null (shown "—") rather than computed.
+ */
+export const MIN_RETURN_OBSERVATIONS = 30;
+export const MIN_SPAN_DAYS_FOR_CAGR = 30;
+
 export function computeMetrics(
   curve: readonly EquityPoint[],
   trades: readonly ClosedTrade[],
@@ -52,8 +60,10 @@ export function computeMetrics(
   const endEquity = last?.equity ?? 0;
   const totalReturn = startEquity > 0 ? endEquity / startEquity - 1 : 0;
 
-  const years = first && last ? (last.t - first.t) / (365.25 * DAY_MS) : 0;
-  const cagr = years > 0 && startEquity > 0 && endEquity > 0 ? (endEquity / startEquity) ** (1 / years) - 1 : null;
+  const spanMs = first && last ? last.t - first.t : 0;
+  const years = spanMs / (365.25 * DAY_MS);
+  const cagr =
+    spanMs >= MIN_SPAN_DAYS_FOR_CAGR * DAY_MS && startEquity > 0 && endEquity > 0 ? (endEquity / startEquity) ** (1 / years) - 1 : null;
 
   const returns: number[] = [];
   for (let i = 1; i < curve.length; i++) {
@@ -62,11 +72,12 @@ export function computeMetrics(
   }
   const rfPerPeriod = (1 + riskFreeRate) ** (1 / periodsPerYear) - 1;
   const excess = returns.map((r) => r - rfPerPeriod);
-  const mean = avg(excess);
-  const sd = stdev(excess);
+  const enough = excess.length >= MIN_RETURN_OBSERVATIONS;
+  const mean = enough ? avg(excess) : null;
+  const sd = enough ? stdev(excess) : null;
   const volatility = sd === null ? null : sd * Math.sqrt(periodsPerYear);
   const sharpe = mean !== null && sd !== null && sd > 0 ? (mean / sd) * Math.sqrt(periodsPerYear) : null;
-  const downside = excess.length > 1 ? Math.sqrt(avg(excess.map((r) => Math.min(r, 0) ** 2))!) : null;
+  const downside = enough ? Math.sqrt(avg(excess.map((r) => Math.min(r, 0) ** 2))!) : null;
   const sortino =
     mean !== null && downside !== null && downside > 0 ? (mean / downside) * Math.sqrt(periodsPerYear) : null;
 

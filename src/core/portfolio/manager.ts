@@ -2,6 +2,7 @@ import type { TradeProposal } from '../domain/analysis';
 import type { Instrument } from '../domain/market';
 import { TIMEFRAME_MS, type Timeframe } from '../domain/time';
 import type { OpenPosition, OrderIntent } from '../domain/trading';
+import { floorTo } from '../risk/engine';
 
 /**
  * Portfolio Manager.
@@ -94,13 +95,17 @@ export function planOrder(input: PlanInput): Plan {
     // The Risk Engine would refuse it anyway; say so here for a clear journal.
     return { kind: 'none', explanation: 'BUY sans stop-loss valide : aucun ordre' };
   }
-  const quantity = sizing.size({
-    equity: input.equity,
-    entry,
-    stop: p.stopLoss,
-    riskPct: input.riskPct,
-    proposal: p,
-  });
+  // Requested in tradable units: the venue's size step, rounded down.
+  const quantity = floorTo(
+    sizing.size({
+      equity: input.equity,
+      entry,
+      stop: p.stopLoss,
+      riskPct: input.riskPct,
+      proposal: p,
+    }),
+    instrument.sizeIncrement,
+  );
   const expiresAt =
     p.horizonBars === null ? null : input.asOf + p.horizonBars * TIMEFRAME_MS[input.timeframe];
   return {

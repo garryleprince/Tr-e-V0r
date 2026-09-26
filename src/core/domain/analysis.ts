@@ -17,12 +17,7 @@ export type AgentId = z.infer<typeof AgentIdSchema>;
 export const StanceSchema = z.enum(['bullish', 'bearish', 'neutral']);
 export type Stance = z.infer<typeof StanceSchema>;
 
-export const AGENT_LABELS: Readonly<Record<AgentId, string>> = {
-  technical: 'Analyste technique',
-  fundamental: 'Analyste fondamental',
-  sentiment: 'Analyste sentiment',
-  macro: 'Analyste macro',
-};
+export { AGENT_LABELS } from '../labels';
 
 export interface LlmCallInfo {
   readonly provider: string;

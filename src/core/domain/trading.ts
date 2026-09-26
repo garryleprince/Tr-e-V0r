@@ -8,11 +8,7 @@ import { z } from 'zod';
 export const ModeSchema = z.enum(['RESEARCH', 'PAPER', 'LIVE']);
 export type Mode = z.infer<typeof ModeSchema>;
 
-export const MODE_LABELS: Readonly<Record<Mode, string>> = {
-  RESEARCH: 'Recherche',
-  PAPER: 'Simulation',
-  LIVE: 'Réel',
-};
+export { MODE_LABELS } from '../labels';
 
 /**
  * Kill switch, after NautilusTrader's `TradingState`:
@@ -83,14 +79,7 @@ export interface OpenPosition {
 
 export type ExitReason = 'stop' | 'target' | 'time' | 'signal' | 'manual' | 'risk';
 
-export const EXIT_REASON_LABELS: Readonly<Record<ExitReason, string>> = {
-  stop: 'Stop-loss',
-  target: 'Objectif',
-  time: 'Horizon atteint',
-  signal: 'Décision IA',
-  manual: 'Clôture manuelle',
-  risk: 'Coupure du risque',
-};
+export { EXIT_REASON_LABELS } from '../labels';
 
 export interface ClosedTrade {
   readonly instrumentId: string;

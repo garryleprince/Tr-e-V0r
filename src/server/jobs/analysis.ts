@@ -94,6 +94,22 @@ export async function runAnalysis(
       );
     }
     const snapshot = computeSnapshot(instrument.id, tf, data.candles);
+    // A scheduled run on a bar already analysed (a retried cron, a cycle after a
+    // manual run on the same bar) would only spend model budget on identical
+    // data: it is recorded as skipped instead.
+    if (trigger === 'schedule' && (await alreadyAnalysed(db, instrument.id, tf, snapshot.asOf))) {
+      await finishRunStatement(db, runId, {
+        status: 'skipped',
+        finishedAt: now(),
+        asOf: snapshot.asOf,
+        dataSource: data.source,
+        snapshot: null,
+        consensus: null,
+        error: 'Aucune nouvelle bougie clôturée depuis la dernière analyse',
+        llmCostUsd: 0,
+      }).run();
+      return { runId, status: 'skipped', decisionId: null, decisionStatus: null, note: 'Aucune nouvelle bougie clôturée' };
+    }
     const quote = instrument.assetClass === 'crypto' ? await deps.candles.getQuote(instrument) : null;
     const quoteFresh = quote !== null && now() - quote.ts < 5 * 60_000;
 
@@ -253,6 +269,14 @@ export async function runWatchlistCycle(deps: AnalysisDeps, trigger: 'schedule' 
     }
   }
   return out;
+}
+
+async function alreadyAnalysed(db: D1Database, instrumentId: string, tf: AnalysisContext['timeframe'], asOf: number): Promise<boolean> {
+  const r = await db
+    .prepare("SELECT 1 AS hit FROM analysis_runs WHERE instrument_id = ? AND timeframe = ? AND as_of = ? AND status = 'completed' LIMIT 1")
+    .bind(instrumentId, tf, asOf)
+    .first();
+  return r !== null;
 }
 
 async function lastCloses(db: D1Database, ids: readonly string[], tf: AnalysisContext['timeframe']): Promise<Record<string, number>> {
