@@ -106,11 +106,13 @@ export function SecurityScreen() {
               <span>{s.environment}</span>
               <span className="dim">Données de marché</span>
               <span>{s.dataMode === 'fixture' ? 'démonstration (enregistrées)' : 'en direct'}</span>
-              <span className="dim">Clé Alpha Vantage</span>
-              <span>{s.providers.alphaVantageKey ? 'configurée' : 'absente (actions et change indisponibles)'}</span>
-              <span className="dim">Quota Alpha Vantage</span>
+              <span className="dim">Sources de marché</span>
+              <span>Coinbase · Yahoo Finance (non officiel) · BCE</span>
+              <span className="dim">Alpha Vantage (secours)</span>
               <span className="num">
-                {s.providers.alphaVantageCallsToday} / {s.providers.alphaVantageDailyLimit} appels aujourd’hui
+                {s.providers.alphaVantageKey
+                  ? `clé configurée · ${s.providers.alphaVantageCallsToday} / ${s.providers.alphaVantageDailyLimit} appels aujourd’hui`
+                  : 'facultatif, non configuré'}
               </span>
               <span className="dim">Modèle d’IA</span>
               <span>{s.llm.available ? s.llm.deepModel : 'non connecté'}</span>
@@ -237,6 +239,14 @@ export function AboutScreen() {
             <li>Zod — MIT</li>
             <li>Zustand — MIT</li>
             <li>SDK Anthropic TypeScript — MIT</li>
+          </ul>
+          <div className="eyebrow" style={{ marginTop: 12 }}>
+            Données
+          </div>
+          <ul className="plain-list small">
+            <li>Taux de change : Source BCE (taux de référence de l’euro)</li>
+            <li>Crypto : Coinbase, Kraken</li>
+            <li>Actions : Yahoo Finance — source non officielle, sans garantie de disponibilité</li>
           </ul>
           <p className="micro dim" style={{ marginTop: 8 }}>
             Détail dans THIRD_PARTY_NOTICES.md. L’architecture s’inspire de TradingAgents, Qlib, NautilusTrader, FinRL et Hummingbot/Condor (concepts étudiés,

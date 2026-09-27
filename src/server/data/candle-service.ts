@@ -57,7 +57,7 @@ export class CandleService {
     const warnings: string[] = [];
     const cached = await getCandles(this.db, instrument.id, tf, limit);
     const record = await getFetchRecord(this.db, instrument.id, tf);
-    const providers = this.providersFor(instrument, tf);
+    const providers = this.providersFor(instrument, tf).filter((p) => p.available?.() ?? true);
     const slow = providers[0]?.id === 'alphavantage';
     const minInterval = slow ? SLOW_VENDOR_REFRESH_MS : REFRESH_MS[tf];
     const lastCached = cached.candles[cached.candles.length - 1];

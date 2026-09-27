@@ -1,5 +1,5 @@
 import { AGENT_LABELS, DECISION_STATUS_LABELS, STANCE_LABELS } from '@core/labels';
-import { dateTime, num, pct, price, qty, symbolOf, usd } from '../app/format';
+import { dateTime, num, pct, price, qty, sourceLabel, symbolOf, usd } from '../app/format';
 import { href } from '../app/router';
 import type { AgentReportRow, DecisionSummary, RunDetail } from '../app/types';
 import { useApi } from '../app/useApi';
@@ -94,7 +94,7 @@ function RunBody({ r }: { r: RunDetail }) {
               <Stat label="Score" value={num(r.snapshot.technicalScore, 2)} />
             </div>
             <p className="micro dim" style={{ marginTop: 10 }}>
-              Dernière bougie visible : {dateTime(r.snapshot.asOf)} · {r.snapshot.barsUsed} bougies · source {r.dataSource ?? '—'}. Aucune donnée postérieure n’était
+              Dernière bougie visible : {dateTime(r.snapshot.asOf)} · {r.snapshot.barsUsed} bougies · source {sourceLabel(r.dataSource)}. Aucune donnée postérieure n’était
               accessible aux agents.
             </p>
           </Card>

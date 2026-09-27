@@ -19,8 +19,8 @@ d'architecture).
 | --- | --- |
 | Interface | PWA iPhone en français, thème sombre et clair, onglets Accueil / Marché / IA / Portefeuille / Plus, hors ligne pour la coque (jamais pour les prix) |
 | Authentification | Compte propriétaire unique, cookie HttpOnly `__Host-`, ré-authentification pour les actions sensibles, verrouillage après échecs |
-| Marchés | Crypto (Coinbase, Kraken en secours), actions US, actions européennes (Paris, Xetra, Amsterdam) via Alpha Vantage ; bougies **clôturées** uniquement |
-| Devises | Compte en euros par défaut (ou en dollars) ; tout actif coté dans une autre devise est converti au taux EUR/USD du jour, effet de change inclus dans les résultats |
+| Marchés | Crypto (Coinbase, Kraken en secours), actions US et européennes (Paris, Xetra, Amsterdam) via Yahoo Finance, source non officielle ; aucune clé de données nécessaire ; bougies **clôturées** uniquement |
+| Devises | Compte en euros par défaut (ou en dollars) ; tout actif coté dans une autre devise est converti au taux de référence EUR/USD de la BCE, effet de change inclus dans les résultats |
 | Graphiques | Chandeliers, volume dans un panneau séparé, MM50 et MM200, lignes Entrée / Stop / Objectif, réticule, vue tableau ; capital et drawdown |
 | IA | Analyste technique et trader (Claude par défaut, ou tout fournisseur compatible OpenAI) ; sans clé, analyste à règles signalé « sans IA » ; budget quotidien illimité par défaut (plafond activable) |
 | Risque | Risk Engine avec 20 limites, plafonds en dur, coupe-circuit ACTIF / RÉDUCTION / ARRÊT, arrêt forcé par variable de déploiement |
@@ -54,7 +54,7 @@ terminal, `npm run dev` dans un autre (Vite redirige `/api` vers le Worker).
 
 ```bash
 npm run typecheck        # web, Worker et tests, TypeScript strict
-npm test                 # 135 tests : quant, agents, risque, simulation, backtest, auth, API, architecture
+npm test                 # 144 tests : quant, agents, risque, simulation, backtest, auth, API, architecture
 npm run verify:browser   # parcours complet sur iPhone émulé (Worker local lancé, base vide)
 ```
 

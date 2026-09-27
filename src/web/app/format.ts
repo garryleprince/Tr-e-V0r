@@ -165,3 +165,18 @@ export function sentence(text: string | null | undefined): string {
   const capital = t.charAt(0).toLocaleUpperCase('fr-FR') + t.slice(1);
   return /[.!?…]$/.test(capital) ? capital : `${capital}.`;
 }
+
+const SOURCE_LABELS: Readonly<Record<string, string>> = {
+  coinbase: 'Coinbase',
+  kraken: 'Kraken',
+  yahoo: 'Yahoo Finance (non officiel)',
+  alphavantage: 'Alpha Vantage',
+  ecb: 'Banque centrale européenne',
+  fixture: 'Données de démonstration',
+};
+
+/** Human name of a market-data source id. */
+export function sourceLabel(id: string | null | undefined): string {
+  if (!id) return DASH;
+  return SOURCE_LABELS[id] ?? id;
+}

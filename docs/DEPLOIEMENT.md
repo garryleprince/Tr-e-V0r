@@ -38,13 +38,12 @@ chiffrée par Cloudflare et n'apparaît ni dans le dépôt ni dans le navigateur
 | `SETUP_TOKEN` | pour l'installation | Prouve que vous êtes l'administrateur à la création du compte. Peut être supprimé ensuite |
 | `ANTHROPIC_API_KEY` | non | Active Claude. Sans clé, l'analyste à règles est utilisé et signalé |
 | `OPENAI_COMPATIBLE_API_KEY` | non | Pour GPT, Gemini ou un serveur compatible, avec l'URL de base réglée dans l'app |
-| `ALPHAVANTAGE_API_KEY` | fortement recommandé | Actions US et européennes, et taux EUR/USD. Sans elle, un compte en euros ne peut rien ouvrir en dollars (clé gratuite sur alphavantage.co) |
+| `ALPHAVANTAGE_API_KEY` | non | Source de secours pour les actions et le change. Les sources principales ne demandent aucune clé : Coinbase, Yahoo Finance (non officielle) et BCE |
 
 ```bash
 openssl rand -base64 32 | npx wrangler secret put SESSION_PEPPER
 npx wrangler secret put SETUP_TOKEN
 npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put ALPHAVANTAGE_API_KEY
 ```
 
 Pour la clé Anthropic : créez une clé dédiée à cette application dans la console
@@ -52,7 +51,7 @@ Anthropic, **avec une limite de dépense mensuelle**. Le budget IA de l'applicat
 illimité par défaut (votre choix) ; cette limite est donc le seul plafond de dépense.
 Un plafond quotidien peut être réactivé dans Réglages → Modèle d'IA.
 
-Avec une clé Alpha Vantage payante, relevez le quota compté par l'application :
+Si vous ajoutez un jour une clé Alpha Vantage payante, relevez le quota compté par l'application :
 **Settings → Variables** du Worker, `ALPHAVANTAGE_DAILY_LIMIT` = votre quota (25 par défaut).
 
 ## 3. Déploiement automatique depuis GitHub (Workers Builds)

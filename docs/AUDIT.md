@@ -6,7 +6,7 @@ Légende :
 - ⏳ prévu (version indiquée) ;
 - ❌ exclu volontairement.
 
-« Vérifié » veut dire vérifié dans l'environnement de développement : 135 tests Vitest,
+« Vérifié » veut dire vérifié dans l'environnement de développement : 144 tests Vitest,
 plus un parcours complet sur iPhone émulé contre le vrai Worker (`wrangler dev`, D1
 locale) en données de démonstration. Ce qui n'a **pas** pu être vérifié est listé dans
 [`LIMITES.md`](LIMITES.md).
@@ -63,7 +63,7 @@ locale) en données de démonstration. Ce qui n'a **pas** pu être vérifié est
 
 | Exigence | État | Détail |
 | --- | --- | --- |
-| Données de marché réelles | 🟡 | Adaptateurs Coinbase, Kraken et Alpha Vantage écrits et testés sur des réponses au format réel ; **pas appelés en direct** ici (hôtes bloqués par le réseau du bac à sable). Le parcours e2e utilise un historique réel enregistré |
+| Données de marché réelles | 🟡 | Adaptateurs Coinbase, Kraken, Yahoo Finance, BCE et Alpha Vantage écrits et testés sur les formats documentés ; **pas appelés en direct** ici (hôtes bloqués par le réseau du bac à sable). Le parcours e2e utilise un historique réel enregistré |
 | Bougies clôturées uniquement | ✅ | La bougie en cours n'est jamais utilisée ni affichée comme un fait |
 | Graphique pro : chandeliers, volume, indicateurs, entrée/stop/objectif, positions | ✅ | lightweight-charts v5, volume en panneau séparé, vue tableau |
 | Courbe de capital et drawdown | ✅ | Deux panneaux, jamais deux axes |
@@ -75,11 +75,12 @@ locale) en données de démonstration. Ce qui n'a **pas** pu être vérifié est
 | Exigence | État | Détail |
 | --- | --- | --- |
 | Crypto | ✅ | 9 paires USD sur Coinbase (Kraken en secours) |
-| Actions US | 🟡 | 7 actions et 2 ETF ; format Alpha Vantage vérifié, appels en direct non vérifiables ici (hôte bloqué) |
-| Actions européennes | 🟡 | 11 actions (Paris, Xetra, Amsterdam), cotées en EUR. `MC.PAR`, `SAP.DEX`, `ASML.AMS` vérifiés en direct le 27/09/2026 ; les autres suivent la même convention |
+| Actions US | 🟡 | 7 actions et 2 ETF via Yahoo Finance, sans clé, source **non officielle** ; Alpha Vantage en secours si une clé est configurée ; appels en direct non vérifiables ici |
+| Actions européennes | 🟡 | 11 actions (Paris, Xetra, Amsterdam), cotées en EUR, via Yahoo Finance (`MC.PA`, `SAP.DE`, `ASML.AS`) sans clé ; existence de ces titres vérifiée en direct le 27/09/2026 (via Alpha Vantage) ; appels Yahoo non vérifiables ici |
 | Compte en euros, conversion des actifs en dollars | ✅ | Coût d'entrée, cash, capital et résultats en devise du compte ; taux enregistré à chaque exécution ; effet de change inclus (tests `ledger`, `desk`) |
 | Taux indisponible ou périmé | ✅ | Ouverture refusée (contrôle `fx_rate` du Risk Engine) ; les freins passent au dernier taux connu ou au taux d'entrée |
-| Quota Alpha Vantage protégé | ✅ | 1 appel par seconde, plafond journalier compté en base, pas de requête le week-end |
+| Aucune clé de données nécessaire | ✅ | Coinbase (crypto), Yahoo Finance (actions, non officiel), BCE (taux EUR/USD officiel) |
+| Quota Alpha Vantage protégé (s'il est utilisé) | ✅ | 1 appel par seconde, plafond journalier compté en base, pas de requête le week-end |
 | Budget IA illimité | ✅ | Choix du propriétaire, réglable ; le plafond de la console du fournisseur reste la seule limite |
 
 ## 5. Backtesting et mémoire

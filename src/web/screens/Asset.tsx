@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { mutate, post } from '../app/api';
-import { arrow, barDate, compact, dateTime, dirClass, exchangeOf, num, pct, price, symbolOf } from '../app/format';
+import { arrow, barDate, compact, dateTime, dirClass, exchangeOf, num, pct, price, sourceLabel, symbolOf } from '../app/format';
 import { href, navigate } from '../app/router';
 import type { AnalysisOutcome, CandlesResponse, Timeframe } from '../app/types';
 import { useApi } from '../app/useApi';
@@ -93,6 +93,12 @@ export function AssetScreen({ id }: { id: string }) {
           </div>
 
           {data.warnings.length > 0 ? <Notice tone="warn">{data.warnings.join(' ')}</Notice> : null}
+          {data.source === 'yahoo' ? (
+            <p className="micro dim">
+              Cours issus de Yahoo Finance, source gratuite non officielle : elle peut s’interrompre sans préavis. Alpha Vantage prend le relais si une clé
+              est configurée.
+            </p>
+          ) : null}
 
           <div className={refreshing ? 'is-refreshing' : ''}>
             {data.candles.length === 0 ? (
@@ -115,7 +121,7 @@ export function AssetScreen({ id }: { id: string }) {
             )}
           </div>
           <p className="micro dim">
-            Source : {data.source}
+            Source : {sourceLabel(data.source)}
             {data.fromCache ? ' (cache)' : ''} · dernière bougie clôturée : {data.asOf ? dateTime(data.asOf) : '—'} · {data.candles.length} bougies
           </p>
 

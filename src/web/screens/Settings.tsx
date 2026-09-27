@@ -67,18 +67,13 @@ function WatchlistSection({ data }: { data: SettingsResponse }) {
   };
   const equityDaily = tf !== '1d' && ids.some((id) => data.instruments.find((i) => i.id === id)?.assetClass !== 'crypto');
   const full = ids.length >= WATCHLIST_MAX;
-  const needsKey = !data.secrets.alphaVantage && ids.some((id) => id.startsWith('alphavantage:'));
   return (
     <Section title="Liste de suivi">
       <Card className="stack">
         <p className="small muted">
-          {ids.length} / {WATCHLIST_MAX} actifs. Chacun est analysé une fois par jour ; les actions consomment une requête Alpha Vantage par jour.
+          {ids.length} / {WATCHLIST_MAX} actifs, analysés une fois par jour. Aucune clé n’est nécessaire : crypto via Coinbase, actions via Yahoo Finance
+          (source non officielle), change via la BCE.
         </p>
-        {needsKey ? (
-          <Notice tone="warn" title="Clé Alpha Vantage absente">
-            Les actions US et européennes ne peuvent pas être chargées sans le secret ALPHAVANTAGE_API_KEY (gratuit sur alphavantage.co).
-          </Notice>
-        ) : null}
         {(['crypto', 'us', 'eu'] as const).map((group) => (
           <div key={group} className="stack">
             <div className="eyebrow">{MARKET_LABELS[group]}</div>
@@ -91,7 +86,7 @@ function WatchlistSection({ data }: { data: SettingsResponse }) {
                   onChange={(on) => (on && full ? undefined : toggle(i.id, on))}
                   label={i.displayName}
                   hint={`${symbolOf(i.id)} · ${i.quoteCurrency} · ${
-                    group === 'crypto' ? 'Coinbase (Kraken en secours)' : `${exchangeOf(i.symbol) ?? 'NYSE / Nasdaq'}, quotidien`
+                    group === 'crypto' ? 'Coinbase (Kraken en secours)' : `${exchangeOf(i.symbol) ?? 'NYSE / Nasdaq'}, quotidien, Yahoo Finance`
                   }`}
                 />
               ))}

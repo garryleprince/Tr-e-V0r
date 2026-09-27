@@ -7,37 +7,41 @@ encore ou fait avec des compromis. Il est mis à jour à chaque version.
 
 | Point | Pourquoi | Ce qui a été fait à la place | À vérifier |
 | --- | --- | --- | --- |
-| Appels en direct à Coinbase, Kraken, Alpha Vantage | Le réseau du bac à sable de développement bloque ces hôtes | Analyseurs testés sur des réponses au format réel ; parcours complet sur un historique **réel enregistré** (mode démonstration) | Au premier déploiement : ouvrir BTC, vérifier la source « coinbase » et l'heure de la dernière bougie |
+| Appels en direct à Coinbase, Kraken, Yahoo Finance, BCE, Alpha Vantage | Le réseau du bac à sable de développement bloque ces hôtes | Analyseurs testés sur les formats documentés ; parcours complet sur un historique **réel enregistré** (mode démonstration) | Au premier déploiement : ouvrir BTC (source « Coinbase »), LVMH (source « Yahoo Finance »), et vérifier dans le portefeuille le taux EUR/USD appliqué |
 | Appels réels à Claude ou à un fournisseur compatible OpenAI | Aucune clé d'API dans l'environnement de développement | Adaptateurs testés contre des réponses enregistrées : sortie structurée, refus, JSON invalide, clé refusée, budget | Poser `ANTHROPIC_API_KEY`, lancer une analyse, lire l'échange exact dans le détail de l'analyse |
 | Safari sur un vrai iPhone | Le parcours automatique tourne dans Chromium en émulation iPhone (taille, écran tactile, agent utilisateur) | Captures relues écran par écran, contrôle automatique d'absence de débordement horizontal | Installer la PWA sur l'iPhone et parcourir les onglets |
 | Workers Builds (déploiement depuis GitHub) | Nécessite votre compte Cloudflare | Configuration et procédure documentées | Voir `DEPLOIEMENT.md` |
 
 ## Données de marché
 
-- **Actions et ETF (Alpha Vantage, offre gratuite)** : 25 requêtes par jour et seulement les
-  100 dernières séances (`outputsize=full` est payant). Conséquences : pas de MM200 sur les
-  actions, et le cache limite les appels. Pas de bid/ask : le contrôle de spread est
-  signalé « non vérifié » en simulation (il bloquerait en mode réel).
+- **Actions et ETF : Yahoo Finance, source NON OFFICIELLE** (votre choix du 27/09/2026, pour
+  n'avoir aucune clé). Yahoo a fermé son API publique en 2017 ; l'accès utilisé est interne,
+  non documenté, et ses conditions d'utilisation n'autorisent pas l'accès automatisé. Il peut
+  être bloqué ou modifié du jour au lendemain : l'application le signale alors (« données
+  indisponibles ») et ne fabrique jamais de cours. Si vous ajoutez un jour une clé Alpha
+  Vantage, elle prend le relais automatiquement.
+- Yahoo fournit environ deux ans d'historique : la MM200 est disponible sur les actions.
+  Pas de bid/ask : le contrôle de spread est signalé « non vérifié » en simulation (il
+  bloquerait en mode réel).
 - **Surveillance des stops des actions** : quotidienne, sur la bougie journalière (pas de
   données intraday gratuites). Un stop franchi en séance est constaté à la clôture ; un
   écart d'ouverture est exécuté au prix d'ouverture, jamais au prix du stop.
-- **Kraken** (secours crypto) ne couvre que BTC, ETH et SOL dans la table de
-  correspondance actuelle.
+- **Kraken** (secours crypto) couvre les 9 cryptos de l'univers.
 - **Mode démonstration** : historique réel enregistré le 26/09/2026 pour BTC, ETH et SPY,
   décalé pour que la dernière bougie soit celle d'hier. SOL n'y figure pas et s'affiche sans
   données. Ce mode est refusé si `ENVIRONMENT=production`.
 
 ## Multi-marchés et devises
 
-- **Quota Alpha Vantage gratuit : 25 appels par jour**, partagés entre les actions (une
-  requête par action et par jour) et le taux EUR/USD (une par jour). Une liste de suivi de
-  12 actifs tient dans le quota ; au-delà, l'application sert le cache et le dit. Une clé
-  payante lève la limite : réglez alors `ALPHAVANTAGE_DAILY_LIMIT`.
-- **Sans clé Alpha Vantage**, il n'y a ni actions ni taux EUR/USD officiel. Le secours
-  Kraken (paire EURUSD) n'a pas pu être vérifié depuis l'environnement de développement.
-  Sans aucun taux, un compte en euros **refuse d'ouvrir** une position en dollars, crypto
-  comprise, ce qui est volontaire. Pour trader de la crypto sans clé Alpha Vantage,
-  réinitialisez le compte en dollars.
+- **Aucune clé nécessaire** : crypto via Coinbase, actions via Yahoo Finance, taux EUR/USD via
+  la Banque centrale européenne (taux de référence officiels, publiés vers 16 h les jours
+  ouvrés TARGET2). En secours pour le taux : Kraken, Yahoo, puis Alpha Vantage si une clé
+  existe.
+- **Sans aucun taux EUR/USD récent** (toutes les sources en panne plus de 5 jours), un
+  compte en euros **refuse d'ouvrir** une position en dollars, crypto comprise. C'est
+  volontaire. Les stops continuent de fonctionner au dernier taux connu.
+- **Alpha Vantage (facultatif)** : s'il est configuré, son quota (25 appels par jour en
+  gratuit) est compté et protégé. Une clé payante se déclare via `ALPHAVANTAGE_DAILY_LIMIT`.
 - **Taux de change quotidien** : les positions sont valorisées au dernier cours de clôture
   EUR/USD, pas en continu. Écart typique : quelques dixièmes de pour cent sur une journée.
 - **Symboles européens** : `MC.PAR`, `SAP.DEX` et `ASML.AMS` ont été vérifiés en direct.

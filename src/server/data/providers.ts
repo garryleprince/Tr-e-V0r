@@ -172,6 +172,11 @@ export class AlphaVantageProvider implements MarketDataProvider {
     return (instrument.assetClass === 'equity' || instrument.assetClass === 'etf' || instrument.assetClass === 'fx') && tf === '1d';
   }
 
+  /** Optional source: without a key it is skipped instead of reporting an error. */
+  available(): boolean {
+    return this.apiKey !== null;
+  }
+
   async fetchCandles(instrument: Instrument, tf: Timeframe, limit: number, signal?: AbortSignal): Promise<Candle[]> {
     if (!this.apiKey) throw new ProviderError(this.id, 'clé ALPHAVANTAGE_API_KEY absente', 'not_configured');
     if (tf !== '1d') throw new ProviderError(this.id, `unité ${tf} non prise en charge`, 'unsupported');

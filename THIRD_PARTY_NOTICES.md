@@ -32,6 +32,15 @@ La liste complète et à jour est générée à partir de `package.json`. Princi
 | @anthropic-ai/sdk | MIT | |
 | lightweight-charts (TradingView) | Apache-2.0 | **Attribution TradingView requise** : conservée via l'option `attributionLogo` et la page « À propos ». Voir https://www.tradingview.com/ |
 
+## Sources de données de marché
+
+| Source | Accès | Conditions |
+| --- | --- | --- |
+| Banque centrale européenne — taux de référence de l'euro | Libre, sans clé | Réutilisation autorisée avec mention de la source : « Source : BCE ». Affichée dans « À propos » |
+| Coinbase Exchange, Kraken | API publiques, sans clé | Conditions d'utilisation de chaque plateforme |
+| Yahoo Finance | **Non officiel**, sans clé | Aucune API publique depuis 2017 ; les conditions de Yahoo n'autorisent pas l'accès automatisé. Utilisé à la demande du propriétaire, pour un usage personnel, et signalé comme non officiel dans l'interface |
+| Alpha Vantage | Clé (facultative) | Conditions de l'offre souscrite |
+
 ## Outils de développement (non distribués avec l'application)
 
 | Paquet | Licence | Usage |

@@ -17,6 +17,8 @@ export interface MarketDataProvider {
   fetchCandles(instrument: Instrument, tf: Timeframe, limit: number, signal?: AbortSignal): Promise<Candle[]>;
   /** Best bid/ask, when the vendor offers one; null otherwise. */
   fetchQuote?(instrument: Instrument, signal?: AbortSignal): Promise<Quote | null>;
+  /** false when the provider cannot run at all (e.g. optional key not set): skipped silently. */
+  available?(): boolean;
 }
 
 export class ProviderError extends Error {
@@ -33,18 +35,41 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export const USER_AGENT = 'Tr-e-V0r/0.1 (+https://github.com/garryleprince/Tr-e-V0r)';
 
-export async function getJson(fetcher: FetchLike, provider: string, url: string, signal?: AbortSignal): Promise<unknown> {
-  let res: Response;
-  try {
-    res = await fetcher(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal });
-  } catch (err) {
-    throw new ProviderError(provider, `réseau : ${err instanceof Error ? err.message : String(err)}`, 'network');
-  }
-  if (res.status === 429) throw new ProviderError(provider, 'limite de requêtes atteinte', 'rate_limited');
-  if (!res.ok) throw new ProviderError(provider, `HTTP ${res.status}`, 'http');
+export async function getJson(
+  fetcher: FetchLike,
+  provider: string,
+  url: string,
+  signal?: AbortSignal,
+  headers: Record<string, string> = {},
+): Promise<unknown> {
+  const res = await request(fetcher, provider, url, { Accept: 'application/json', ...headers }, signal);
   try {
     return await res.json();
   } catch {
     throw new ProviderError(provider, 'réponse illisible', 'bad_payload');
   }
+}
+
+export async function getText(
+  fetcher: FetchLike,
+  provider: string,
+  url: string,
+  signal?: AbortSignal,
+  headers: Record<string, string> = {},
+): Promise<string> {
+  const res = await request(fetcher, provider, url, headers, signal);
+  return res.text();
+}
+
+async function request(fetcher: FetchLike, provider: string, url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetcher(url, { headers: { 'User-Agent': USER_AGENT, ...headers }, ...(signal ? { signal } : {}) });
+  } catch (err) {
+    throw new ProviderError(provider, `réseau : ${err instanceof Error ? err.message : String(err)}`, 'network');
+  }
+  if (res.status === 429) throw new ProviderError(provider, 'limite de requêtes atteinte', 'rate_limited');
+  if (res.status === 401 || res.status === 403) throw new ProviderError(provider, `accès refusé (HTTP ${res.status})`, 'http');
+  if (!res.ok) throw new ProviderError(provider, `HTTP ${res.status}`, 'http');
+  return res;
 }
