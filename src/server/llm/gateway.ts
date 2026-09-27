@@ -46,7 +46,8 @@ export class BudgetedLlm implements LlmProvider {
 
   constructor(
     private readonly inner: LlmProvider,
-    private readonly dailyBudgetUsd: number,
+    /** null: no app-side ceiling (explicit owner choice). */
+    private readonly dailyBudgetUsd: number | null,
     private readonly spentTodayUsd: number,
   ) {}
 
@@ -64,7 +65,7 @@ export class BudgetedLlm implements LlmProvider {
 
   async generateStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
     const spent = this.spentTodayUsd + this.spentThisRun;
-    if (spent >= this.dailyBudgetUsd) {
+    if (this.dailyBudgetUsd !== null && spent >= this.dailyBudgetUsd) {
       return {
         ok: false,
         error: {

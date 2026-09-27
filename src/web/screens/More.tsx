@@ -107,7 +107,11 @@ export function SecurityScreen() {
               <span className="dim">Données de marché</span>
               <span>{s.dataMode === 'fixture' ? 'démonstration (enregistrées)' : 'en direct'}</span>
               <span className="dim">Clé Alpha Vantage</span>
-              <span>{s.providers.alphaVantageKey ? 'configurée' : 'absente (actions indisponibles)'}</span>
+              <span>{s.providers.alphaVantageKey ? 'configurée' : 'absente (actions et change indisponibles)'}</span>
+              <span className="dim">Quota Alpha Vantage</span>
+              <span className="num">
+                {s.providers.alphaVantageCallsToday} / {s.providers.alphaVantageDailyLimit} appels aujourd’hui
+              </span>
               <span className="dim">Modèle d’IA</span>
               <span>{s.llm.available ? s.llm.deepModel : 'non connecté'}</span>
               <span className="dim">Arrêt imposé</span>

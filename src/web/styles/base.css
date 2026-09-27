@@ -130,6 +130,15 @@ p {
   min-width: 0;
 }
 
+.block {
+  display: block;
+}
+
+.stack-0 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;

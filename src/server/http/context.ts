@@ -29,7 +29,7 @@ export function services(c: AppContext) {
     db,
     config,
     now,
-    candles: new CandleService(db, buildProviders(config, fetcher, now), now),
+    candles: new CandleService(db, buildProviders(config, fetcher, now, db), now),
     desk: deskStub(c.env),
   };
 }

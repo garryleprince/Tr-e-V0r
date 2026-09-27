@@ -30,7 +30,7 @@ export default {
     const config = readConfig(env);
     const now = () => Date.now();
     const fetcher = (input: string, init?: RequestInit) => fetch(input, init);
-    const candles = new CandleService(env.DB, buildProviders(config, fetcher, now), now);
+    const candles = new CandleService(env.DB, buildProviders(config, fetcher, now, env.DB), now);
     const desk = deskStub(env);
 
     const task = async () => {

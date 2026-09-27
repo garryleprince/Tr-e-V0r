@@ -117,6 +117,8 @@ function mapPosition(r: Row): OpenPosition & { lastCheckedAt: number } {
     mode: ModeSchema.parse(r.mode),
     quantity: num(r.quantity),
     avgPrice: num(r.avg_price),
+    // Rows written before V0.2 carry no entry_value: same currency as the account.
+    entryValue: r.entry_value === null || r.entry_value === undefined ? num(r.avg_price) * num(r.quantity) : num(r.entry_value),
     stopLoss: numOrNull(r.stop_loss),
     takeProfit: numOrNull(r.take_profit),
     expiresAt: numOrNull(r.expires_at),
@@ -138,9 +140,9 @@ export async function openPositions(db: D1Database, mode: Mode): Promise<(OpenPo
 export function upsertOpenPosition(db: D1Database, p: OpenPosition, lastCheckedAt: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO positions (id, mode, instrument_id, status, quantity, avg_price, entry_fees, stop_loss, take_profit, expires_at, opened_at, decision_id, last_checked_at)
-       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET quantity = excluded.quantity, avg_price = excluded.avg_price, entry_fees = excluded.entry_fees,
+      `INSERT INTO positions (id, mode, instrument_id, status, quantity, avg_price, entry_value, entry_fees, stop_loss, take_profit, expires_at, opened_at, decision_id, last_checked_at)
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET quantity = excluded.quantity, avg_price = excluded.avg_price, entry_value = excluded.entry_value, entry_fees = excluded.entry_fees,
        stop_loss = excluded.stop_loss, take_profit = excluded.take_profit, expires_at = excluded.expires_at,
        last_checked_at = excluded.last_checked_at`,
     )
@@ -150,6 +152,7 @@ export function upsertOpenPosition(db: D1Database, p: OpenPosition, lastCheckedA
       p.instrumentId,
       p.quantity,
       p.avgPrice,
+      p.entryValue,
       p.entryFees,
       p.stopLoss,
       p.takeProfit,
@@ -223,10 +226,11 @@ export function insertOrder(db: D1Database, o: OrderRecord): D1PreparedStatement
     );
 }
 
-export function insertFill(db: D1Database, orderId: string, f: Fill): D1PreparedStatement {
+/** `fx`: quote → account currency factor applied to this fill. */
+export function insertFill(db: D1Database, orderId: string, f: Fill, fx: number): D1PreparedStatement {
   return db
-    .prepare('INSERT INTO fills (id, order_id, price, quantity, fee, slippage_bps, ts) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(newId(), orderId, f.price, f.quantity, f.fee, f.slippageBps, f.ts);
+    .prepare('INSERT INTO fills (id, order_id, price, quantity, fee, slippage_bps, ts, fx) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(newId(), orderId, f.price, f.quantity, f.fee, f.slippageBps, f.ts, fx);
 }
 
 export function insertTrade(
@@ -235,11 +239,12 @@ export function insertTrade(
   positionId: string,
   decisionId: string | null,
   t: ClosedTrade,
+  currency: string,
 ): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO trades (id, mode, position_id, instrument_id, quantity, entry_price, exit_price, opened_at, closed_at, pnl, return_pct, exit_reason, decision_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO trades (id, mode, position_id, instrument_id, quantity, entry_price, exit_price, opened_at, closed_at, pnl, return_pct, exit_reason, decision_id, currency)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       newId(),
@@ -255,6 +260,7 @@ export function insertTrade(
       t.returnPct,
       t.exitReason,
       decisionId,
+      currency,
     );
 }
 

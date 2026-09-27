@@ -69,6 +69,18 @@ describe('registre', () => {
     expect(rest.trade.pnl).toBeCloseTo(-20 - 0.18 - 0.2, 10);
     expect(() => applySell(rest.state, { price: 1, quantity: 1, fee: 0, slippageBps: 0, ts: 4 }, 'manual')).toThrow();
   });
+
+  it('multi-devises : le résultat inclut l’effet de change entre l’entrée et la sortie', () => {
+    const meta = { id: 'p', instrumentId: 'x', mode: 'PAPER' as const, stopLoss: null, takeProfit: null, expiresAt: null, decisionId: null };
+    // Achat de 10 à 100 $, 1 $ = 0,90 € ; revente au même prix, 1 $ = 0,95 €. Sans frais.
+    const bought = applyBuy({ cash: 10_000, position: null }, { price: 100, quantity: 10, fee: 0, slippageBps: 0, ts: 1 }, meta, 0.9);
+    expect(bought.cash).toBeCloseTo(9_100, 10);
+    expect(bought.position!.entryValue).toBeCloseTo(900, 10);
+    const sold = applySell(bought, { price: 100, quantity: 10, fee: 0, slippageBps: 0, ts: 2 }, 'manual', 0.95);
+    expect(sold.trade.pnl).toBeCloseTo(50, 10); // gain de change uniquement
+    expect(sold.state.cash).toBeCloseTo(10_050, 10);
+    expect(() => applyBuy({ cash: 1, position: null }, { price: 1, quantity: 1, fee: 0, slippageBps: 0, ts: 1 }, meta, 0)).toThrow();
+  });
 });
 
 describe('Portfolio Manager', () => {
@@ -84,6 +96,7 @@ describe('Portfolio Manager', () => {
       position: null,
       equity: 10_000,
       riskPct: 1,
+      fx: 1,
       decisionId: 'd',
     });
     expect(plan.kind).toBe('order');
@@ -93,8 +106,36 @@ describe('Portfolio Manager', () => {
     }
   });
 
+  it('multi-devises : le risque au stop est mesuré en devise du compte', () => {
+    // Compte en EUR, actif coté en USD, 1 USD = 0,877 EUR (EUR/USD 1,14).
+    const fx = 1 / 1.14;
+    const plan = planOrder({
+      proposal: { ...base, action: 'BUY', entryPrice: 100, stopLoss: 96, takeProfit: 110, horizonBars: 5 },
+      instrument,
+      timeframe: '1d',
+      referencePrice: 100,
+      asOf: 0,
+      position: null,
+      equity: 10_000,
+      riskPct: 1,
+      fx,
+      decisionId: 'd',
+    });
+    expect(plan.kind).toBe('order');
+    if (plan.kind === 'order') {
+      const lossAtStopEur = (100 - 96) * plan.intent.quantity * fx;
+      expect(lossAtStopEur).toBeLessThanOrEqual(100 + 1e-9);
+      expect(lossAtStopEur).toBeGreaterThan(99.9);
+    }
+    const noRate = planOrder({
+      proposal: { ...base, action: 'BUY', entryPrice: 100, stopLoss: 96, takeProfit: 110, horizonBars: 5 },
+      instrument, timeframe: '1d', referencePrice: 100, asOf: 0, position: null, equity: 10_000, riskPct: 1, fx: null, decisionId: 'd',
+    });
+    expect(noRate.kind).toBe('none');
+  });
+
   it('HOLD et SELL sans position ne produisent aucun ordre', () => {
-    const args = { instrument, timeframe: '1d' as const, referencePrice: 100, asOf: 0, position: null, equity: 1e4, riskPct: 1, decisionId: null };
+    const args = { instrument, timeframe: '1d' as const, referencePrice: 100, asOf: 0, position: null, equity: 1e4, riskPct: 1, fx: 1, decisionId: null };
     expect(planOrder({ ...args, proposal: { ...base, action: 'HOLD' } }).kind).toBe('none');
     expect(planOrder({ ...args, proposal: { ...base, action: 'SELL', entryPrice: 100 } }).kind).toBe('none');
   });

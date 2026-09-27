@@ -165,9 +165,14 @@ export interface AnalysisOutcome {
   readonly note: string;
 }
 
+/** Prices in the instrument's quote currency; values and results in the account currency. */
 export interface MarkedPosition extends OpenPosition {
   readonly instrument: Instrument | null;
   readonly markPrice: number | null;
+  /** Quote → account conversion used for the values below. */
+  readonly fx: number;
+  /** true when no current rate was known and the entry rate was used. */
+  readonly fxEstimated: boolean;
   readonly marketValue: number;
   readonly unrealizedPnl: number;
   readonly unrealizedPct: number;
@@ -224,7 +229,8 @@ export interface LlmStatus {
   readonly deepModel: string;
   readonly quickModel: string;
   readonly spentTodayUsd: number;
-  readonly dailyBudgetUsd: number;
+  /** null: no app-side limit (owner's choice). */
+  readonly dailyBudgetUsd: number | null;
 }
 
 export interface Dashboard {
@@ -298,5 +304,5 @@ export interface SystemInfo {
   readonly killSwitchForced: boolean;
   readonly jobs: { name: string; lastRunAt: number; lastStatus: string; detail: string | null }[];
   readonly llm: LlmStatus;
-  readonly providers: { readonly alphaVantageKey: boolean };
+  readonly providers: { readonly alphaVantageKey: boolean; readonly alphaVantageCallsToday: number; readonly alphaVantageDailyLimit: number };
 }

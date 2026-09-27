@@ -18,8 +18,11 @@ import { floorTo } from '../risk/engine';
 /** Pluggable sizing (docs/ARCHITECTURE.md §5). A learned policy would implement this. */
 export interface SizingPolicy {
   readonly id: string;
-  /** Quantity for a new long position, before risk limits. */
-  size(input: { equity: number; entry: number; stop: number; riskPct: number; proposal: TradeProposal }): number;
+  /**
+   * Quantity for a new long position, before risk limits. `equity` is in the
+   * account currency, prices in the quote currency, `fx` converts quote → account.
+   */
+  size(input: { equity: number; entry: number; stop: number; riskPct: number; fx: number; proposal: TradeProposal }): number;
 }
 
 /**
@@ -28,12 +31,12 @@ export interface SizingPolicy {
  */
 export const fixedFractionalSizing: SizingPolicy = {
   id: 'fixed-fractional',
-  size({ equity, entry, stop, riskPct, proposal }) {
-    const perUnitRisk = entry - stop;
+  size({ equity, entry, stop, riskPct, fx, proposal }) {
+    const perUnitRisk = (entry - stop) * fx;
     if (!(perUnitRisk > 0) || !(equity > 0)) return 0;
     let qty = (equity * (riskPct / 100)) / perUnitRisk;
     if (proposal.sizePctOfEquity !== null && proposal.sizePctOfEquity > 0) {
-      qty = Math.min(qty, (equity * (proposal.sizePctOfEquity / 100)) / entry);
+      qty = Math.min(qty, (equity * (proposal.sizePctOfEquity / 100)) / (entry * fx));
     }
     return qty;
   },
@@ -46,8 +49,11 @@ export interface PlanInput {
   readonly referencePrice: number;
   readonly asOf: number;
   readonly position: OpenPosition | null;
+  /** Account currency. */
   readonly equity: number;
   readonly riskPct: number;
+  /** Quote → account conversion for this instrument; null when no rate is known. */
+  readonly fx: number | null;
   readonly decisionId: string | null;
   readonly sizing?: SizingPolicy;
 }
@@ -95,6 +101,12 @@ export function planOrder(input: PlanInput): Plan {
     // The Risk Engine would refuse it anyway; say so here for a clear journal.
     return { kind: 'none', explanation: 'BUY sans stop-loss valide : aucun ordre' };
   }
+  if (input.fx === null) {
+    return {
+      kind: 'none',
+      explanation: `Taux de change ${instrument.quoteCurrency} indisponible : impossible de dimensionner en devise du compte`,
+    };
+  }
   // Requested in tradable units: the venue's size step, rounded down.
   const quantity = floorTo(
     sizing.size({
@@ -102,6 +114,7 @@ export function planOrder(input: PlanInput): Plan {
       entry,
       stop: p.stopLoss,
       riskPct: input.riskPct,
+      fx: input.fx,
       proposal: p,
     }),
     instrument.sizeIncrement,

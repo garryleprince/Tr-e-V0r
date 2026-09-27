@@ -10,6 +10,7 @@ export const DEV_CONFIG: RuntimeConfig = {
   killSwitchForced: false,
   liveTradingEnabled: false,
   marketDataMode: 'live',
+  alphaVantageDailyLimit: 25,
   setupToken: 'setup-token-for-tests',
   sessionPepper: 'pepper',
   keys: { anthropic: null, openaiCompatible: null, alphaVantage: null },
@@ -75,7 +76,7 @@ export function fakeDeskNamespace(db: D1Database, config: RuntimeConfig, now: ()
     submit: (req: never) => queue.run(() => core().submit(req)),
     monitor: (inputs: never) => queue.run(() => core().monitor(inputs)),
     closeManually: (id: string, market: never) => queue.run(() => core().closeManually(id, market)),
-    resetPaper: (cash: number, stepUp: boolean) => queue.run(() => core().resetPaper(cash, stepUp)),
+    resetPaper: (cash: number, stepUp: boolean, currency?: 'EUR' | 'USD') => queue.run(() => core().resetPaper(cash, stepUp, currency)),
   };
   return {
     stub,

@@ -57,7 +57,7 @@ export function AiScreen() {
           </p>
           {llm ? (
             <p className="micro dim num">
-              Dépense IA du jour : {usd(llm.spentTodayUsd)} sur un budget de {usd(llm.dailyBudgetUsd)}.
+              Dépense IA du jour : {usd(llm.spentTodayUsd)}{llm.dailyBudgetUsd === null ? ', sans limite fixée dans l’application' : ` sur un budget de ${usd(llm.dailyBudgetUsd)}`}.
               {!llm.available && llm.reason ? ` ${sentence(llm.reason)}` : ''}
             </p>
           ) : null}

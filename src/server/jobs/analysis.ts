@@ -1,14 +1,17 @@
 import type { AnalysisContext, PortfolioView } from '../../core/agents/contracts';
 import { runAgentPipeline } from '../../core/agents/orchestrator';
 import type { AgentReport, DecisionStatus } from '../../core/domain/analysis';
+import { DEFAULT_ACCOUNT_CURRENCY } from '../../core/domain/fx';
 import type { Instrument } from '../../core/domain/market';
 import { utcDayStart } from '../../core/domain/time';
 import { logReturns, pearson } from '../../core/quant/indicators';
 import { computeSnapshot, MIN_BARS_FOR_SNAPSHOT } from '../../core/quant/features';
 import { planOrder } from '../../core/portfolio/manager';
+import { entryFx } from '../../core/portfolio/ledger';
 import { buildLineup } from '../agents/llm-agents';
 import { CandleService } from '../data/candle-service';
-import { addEvent, getCandles, getInstrument, getSettings } from '../db/core';
+import { refreshFx } from '../data/fx';
+import { addEvent, getCandles, getInstrument, getSettings, openingFx, valuationFx } from '../db/core';
 import {
   decisionStatement,
   finishRunStatement,
@@ -115,8 +118,16 @@ export async function runAnalysis(
 
     const positions = await openPositions(db, 'PAPER');
     const account = await getAccount(db, 'PAPER');
+    const currency = account?.currency ?? DEFAULT_ACCOUNT_CURRENCY;
+    const fxView = await refreshFx(db, deps.candles, now());
     const marks = await lastCloses(db, positions.map((p) => p.instrumentId), tf);
-    const exposure = positions.reduce((a, p) => a + p.quantity * (marks[p.instrumentId] ?? p.avgPrice), 0);
+    // Capital in the account currency: each position converted at the last known rate.
+    let exposure = 0;
+    for (const p of positions) {
+      const held = await getInstrument(db, p.instrumentId);
+      const rate = valuationFx(fxView, held?.quoteCurrency ?? currency, currency) ?? entryFx(p);
+      exposure += p.quantity * (marks[p.instrumentId] ?? p.avgPrice) * rate;
+    }
     const cash = account?.cash ?? 0;
     const portfolio: PortfolioView = {
       equity: cash + exposure,
@@ -162,6 +173,7 @@ export async function runAnalysis(
         position,
         equity: portfolio.equity,
         riskPct: settings.risk.maxRiskPerTradePct,
+        fx: openingFx(fxView, instrument.quoteCurrency, currency),
         decisionId,
       });
       planExplanation = plan.explanation;

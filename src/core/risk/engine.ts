@@ -45,12 +45,20 @@ export interface MarketFacts {
   readonly avgDollarVolume: number | null;
   readonly bid: number | null;
   readonly ask: number | null;
+  /**
+   * Quote → account currency factor for this instrument (1 when they match).
+   * null = no usable rate: openings are refused, brakes are not affected.
+   */
+  readonly fx: number | null;
 }
 
 export interface HeldPosition {
   readonly instrumentId: string;
   readonly quantity: number;
+  /** Quote currency. */
   readonly markPrice: number;
+  /** Quote → account currency factor used to value this position. */
+  readonly fx: number;
 }
 
 export interface RiskState {
@@ -301,15 +309,36 @@ function evaluateOpening(intent: OrderIntent, s: RiskState): RiskEvaluation {
     message: `${openCount} position(s) ouverte(s)`,
   });
 
+  // Every amount compared with capital is converted into the account currency.
+  const fx = m.fx !== null && m.fx > 0 && Number.isFinite(m.fx) ? m.fx : null;
+  add({
+    rule: 'fx_rate',
+    label: 'Taux de change',
+    passed: fx !== null,
+    severity: 'block',
+    value: fx === null ? null : round(fx, 6),
+    message:
+      fx === null
+        ? `Taux de change ${m.instrument.quoteCurrency} indisponible : montant non convertible en devise du compte`
+        : fx === 1
+          ? 'Même devise que le compte'
+          : `1 ${m.instrument.quoteCurrency} = ${round(fx, 4)} en devise du compte`,
+  });
+
+  const avgVolumeAccount = m.avgDollarVolume !== null && fx !== null ? m.avgDollarVolume * fx : null;
   add({
     rule: 'liquidity',
     label: 'Liquidité',
-    passed: m.avgDollarVolume !== null && m.avgDollarVolume >= L.minAvgDollarVolume,
+    passed: avgVolumeAccount !== null && avgVolumeAccount >= L.minAvgDollarVolume,
     severity: 'block',
-    value: m.avgDollarVolume === null ? null : Math.round(m.avgDollarVolume),
+    value: avgVolumeAccount === null ? null : Math.round(avgVolumeAccount),
     limit: L.minAvgDollarVolume,
     message:
-      m.avgDollarVolume === null ? 'Volume inconnu : liquidité non évaluable' : 'Volume moyen par bougie',
+      m.avgDollarVolume === null
+        ? 'Volume inconnu : liquidité non évaluable'
+        : avgVolumeAccount === null
+          ? 'Liquidité non convertible (taux de change inconnu)'
+          : 'Volume moyen par bougie, en devise du compte',
   });
 
   for (const p of s.positions) {
@@ -354,14 +383,17 @@ function evaluateOpening(intent: OrderIntent, s: RiskState): RiskEvaluation {
   // Quantity: the smallest of every ceiling, rounded down to the lot size.
   const requested = intent.quantity;
   const feeRate = s.feeBps / 10_000;
-  const heldNotional = held ? held.quantity * held.markPrice : 0;
-  const grossExposure = s.positions.reduce((a, p) => a + Math.abs(p.quantity) * p.markPrice, 0);
+  // Unknown rate: every ceiling is zero (the fx_rate check already blocks).
+  const k = fx ?? Number.POSITIVE_INFINITY;
+  const entryAccount = entry * k;
+  const heldNotional = held ? held.quantity * held.markPrice * held.fx : 0;
+  const grossExposure = s.positions.reduce((a, p) => a + Math.abs(p.quantity) * p.markPrice * p.fx, 0);
   const ceilings: { rule: string; label: string; qty: number; detail: string }[] = [];
   if (stopDistance !== null && stopDistance > 0) {
     ceilings.push({
       rule: 'risk_per_trade',
       label: 'Risque par trade',
-      qty: (s.equity * (L.maxRiskPerTradePct / 100)) / stopDistance,
+      qty: (s.equity * (L.maxRiskPerTradePct / 100)) / (stopDistance * k),
       detail: `${L.maxRiskPerTradePct} % du capital au stop`,
     });
   }
@@ -369,19 +401,19 @@ function evaluateOpening(intent: OrderIntent, s: RiskState): RiskEvaluation {
     {
       rule: 'position_size',
       label: 'Taille de position',
-      qty: (s.equity * (L.maxPositionPct / 100) - heldNotional) / entry,
+      qty: (s.equity * (L.maxPositionPct / 100) - heldNotional) / entryAccount,
       detail: `${L.maxPositionPct} % du capital`,
     },
     {
       rule: 'gross_exposure',
       label: 'Exposition totale',
-      qty: (s.equity * (L.maxGrossExposurePct / 100) - grossExposure) / entry,
+      qty: (s.equity * (L.maxGrossExposurePct / 100) - grossExposure) / entryAccount,
       detail: `${L.maxGrossExposurePct} % du capital`,
     },
     {
       rule: 'cash',
       label: 'Cash disponible',
-      qty: s.cash / (entry * (1 + feeRate)),
+      qty: s.cash / (entryAccount * (1 + feeRate)),
       detail: 'cash, frais inclus',
     },
   );

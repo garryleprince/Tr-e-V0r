@@ -27,7 +27,12 @@ export const LlmSettingsSchema = z.strictObject({
   quickEffort: EffortSchema,
   /** Base URL of an OpenAI-compatible endpoint (GPT, Gemini, Ollama, vLLM…). */
   baseUrl: z.string().url().max(300).nullable(),
-  dailyBudgetUsd: z.number().min(0).max(HARD_CAPS.llmDailyBudgetUsd),
+  /**
+   * Daily model spend ceiling enforced by the app, USD. null = no limit set in
+   * the app (the owner's choice); the provider account's own spending limit
+   * then remains the only ceiling.
+   */
+  dailyBudgetUsd: z.number().min(0).max(HARD_CAPS.llmDailyBudgetUsd).nullable(),
   /** When the LLM fails, fall back to the rule-based agents (explicit opt-in). */
   fallbackToRules: z.boolean(),
 });
@@ -59,7 +64,16 @@ export type SettingsKey = keyof Settings;
 export const DEFAULT_SETTINGS: Settings = {
   risk: DEFAULT_RISK_LIMITS,
   watchlist: {
-    instrumentIds: ['coinbase:BTC-USD', 'coinbase:ETH-USD', 'coinbase:SOL-USD'],
+    // Crypto (no key needed), US and European equities (Alpha Vantage key).
+    instrumentIds: [
+      'coinbase:BTC-USD',
+      'coinbase:ETH-USD',
+      'coinbase:SOL-USD',
+      'alphavantage:SPY',
+      'alphavantage:NVDA',
+      'alphavantage:MC.PAR',
+      'alphavantage:SAP.DEX',
+    ],
     timeframe: '1d',
   },
   llm: {
@@ -69,7 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
     deepEffort: 'high',
     quickEffort: 'low',
     baseUrl: null,
-    dailyBudgetUsd: 2,
+    dailyBudgetUsd: null,
     fallbackToRules: false,
   },
   schedule: { analysisEnabled: true },

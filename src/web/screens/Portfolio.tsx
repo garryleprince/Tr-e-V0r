@@ -25,7 +25,7 @@ export function PortfolioScreen() {
         <PortfolioBody p={pf.data} />
       ) : (
         <Empty icon={<IconWallet />} title="Compte de simulation pas encore ouvert">
-          Il sera créé avec 10 000 $ fictifs à la première analyse. Aucun argent réel n’est engagé dans cette version.
+          Il sera créé avec 10 000 € fictifs à la première analyse. Aucun argent réel n’est engagé dans cette version.
         </Empty>
       )}
     </Screen>
@@ -99,7 +99,7 @@ function PortfolioBody({ p }: { p: PortfolioReady }) {
       </Section>
 
       <TradesSection currency={p.currency} />
-      <ResetSection hasPositions={p.positions.length > 0} startingCash={p.startingCash} />
+      <ResetSection hasPositions={p.positions.length > 0} startingCash={p.startingCash} currency={p.currency} />
     </>
   );
 }
@@ -170,6 +170,7 @@ function EquitySection({ currency }: { currency: string }) {
 }
 
 function PositionCard({ pos, currency }: { pos: MarkedPosition; currency: string }) {
+  const quote = pos.instrument?.quoteCurrency ?? currency;
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const close = async () => {
@@ -192,20 +193,26 @@ function PositionCard({ pos, currency }: { pos: MarkedPosition; currency: string
         <span className="dim">Quantité</span>
         <span>{qty(pos.quantity)}</span>
         <span className="dim">Prix moyen</span>
-        <span>{price(pos.avgPrice)}</span>
+        <span>{price(pos.avgPrice, quote)}</span>
         <span className="dim">Cours</span>
-        <span>{price(pos.markPrice)}</span>
+        <span>{price(pos.markPrice, quote)}</span>
         <span className="dim">Valeur</span>
         <span>{money(pos.marketValue, currency)}</span>
         <span className="dim">Stop</span>
-        <span>{price(pos.stopLoss)}</span>
+        <span>{price(pos.stopLoss, quote)}</span>
         <span className="dim">Objectif</span>
-        <span>{price(pos.takeProfit)}</span>
+        <span>{price(pos.takeProfit, quote)}</span>
         <span className="dim">Échéance</span>
         <span>{pos.expiresAt ? dateTime(pos.expiresAt) : '—'}</span>
         <span className="dim">Ouverte</span>
         <span>{dateTime(pos.openedAt)}</span>
       </div>
+      {quote !== currency ? (
+        <p className="micro dim num">
+          Valeur convertie : 1 {quote} = {num(pos.fx, 4)} {currency}
+          {pos.fxEstimated ? ' (taux d’entrée, taux actuel indisponible)' : ''}. Le résultat inclut l’effet de change.
+        </p>
+      ) : null}
       <div className="row">
         <Button size="sm" onClick={() => setConfirm(true)}>
           Clôturer
@@ -247,7 +254,7 @@ function TradesSection({ currency }: { currency: string }) {
                   {symbolOf(tr.instrumentId)} <span className="dim small">· {EXIT_REASON_LABELS[tr.exitReason]}</span>
                 </span>
                 <span className="list-sub num">
-                  {price(tr.entryPrice)} → {price(tr.exitPrice)} · {date(tr.openedAt)} → {date(tr.closedAt)}
+                  {price(tr.entryPrice)} → {price(tr.exitPrice)} (devise de l’actif) · {date(tr.openedAt)} → {date(tr.closedAt)}
                 </span>
               </span>
               <span className={`num ${pnlClass(tr.pnl)}`}>
@@ -261,15 +268,19 @@ function TradesSection({ currency }: { currency: string }) {
   );
 }
 
-function ResetSection({ hasPositions, startingCash }: { hasPositions: boolean; startingCash: number }) {
+function ResetSection({ hasPositions, startingCash, currency }: { hasPositions: boolean; startingCash: number; currency: string }) {
   const [open, setOpen] = useState(false);
   const [cash, setCash] = useState(String(startingCash));
+  const [ccy, setCcy] = useState<'EUR' | 'USD'>(currency === 'USD' ? 'USD' : 'EUR');
   const [busy, setBusy] = useState(false);
   const value = Number(cash.replace(/\s/g, '').replace(',', '.'));
   const valid = Number.isFinite(value) && value >= 100 && value <= 10_000_000;
   const reset = async () => {
     setBusy(true);
-    const r = await mutate(() => post('/portfolio/reset', { startingCash: value }, 'Réinitialiser la simulation exige votre mot de passe.'), 'Simulation réinitialisée');
+    const r = await mutate(
+      () => post('/portfolio/reset', { startingCash: value, currency: ccy }, 'Réinitialiser la simulation exige votre mot de passe.'),
+      'Simulation réinitialisée',
+    );
     setBusy(false);
     if (r) setOpen(false);
   };
@@ -286,7 +297,20 @@ function ResetSection({ hasPositions, startingCash }: { hasPositions: boolean; s
       </Card>
       <Sheet open={open} onClose={() => setOpen(false)} title="Réinitialiser la simulation">
         <div className="stack">
-          <Field label="Capital de départ ($)" error={valid ? null : 'Entre 100 et 10 000 000.'}>
+          <Field label="Devise du compte" hint="Les actifs cotés dans une autre devise sont convertis au taux du jour.">
+            {() => (
+              <Segmented<'EUR' | 'USD'>
+                label="Devise du compte"
+                value={ccy}
+                onChange={setCcy}
+                options={[
+                  { value: 'EUR', label: 'Euro (€)' },
+                  { value: 'USD', label: 'Dollar ($)' },
+                ]}
+              />
+            )}
+          </Field>
+          <Field label="Capital de départ" error={valid ? null : 'Entre 100 et 10 000 000.'}>
             {(id) => <input id={id} className="input num" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />}
           </Field>
           <Button variant="primary" size="lg" loading={busy} disabled={!valid} onClick={reset}>

@@ -11,7 +11,10 @@ architecture backend, architecture IA, mode simulation.
 
 Voir [`AUDIT.md`](AUDIT.md) pour l'état exact de chaque exigence à la livraison.
 
-## V0.2 — Agents et décision
+## V0.2 — Marchés, devises, agents et décision
+
+- ✅ Crypto, actions US, actions européennes ; compte en euros avec conversion des actifs en dollars
+- ✅ Protection du quota Alpha Vantage ; budget IA illimité au choix
 
 - ⏳ Fundamental Analyst (Alpha Vantage OVERVIEW / EARNINGS, SEC EDGAR « as filed »)
 - ⏳ Sentiment Analyst (NEWS_SENTIMENT filtré point-in-time)

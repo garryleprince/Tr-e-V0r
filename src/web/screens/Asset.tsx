@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { mutate, post } from '../app/api';
-import { arrow, barDate, compact, dateTime, dirClass, num, pct, price, symbolOf } from '../app/format';
+import { arrow, barDate, compact, dateTime, dirClass, exchangeOf, num, pct, price, symbolOf } from '../app/format';
 import { href, navigate } from '../app/router';
 import type { AnalysisOutcome, CandlesResponse, Timeframe } from '../app/types';
 import { useApi } from '../app/useApi';
@@ -55,7 +55,7 @@ export function AssetScreen({ id }: { id: string }) {
   return (
     <Screen
       title={symbolOf(id)}
-      eyebrow={data?.instrument.displayName ?? id}
+      eyebrow={data ? [data.instrument.displayName, exchangeOf(data.instrument.symbol), data.instrument.quoteCurrency].filter(Boolean).join(' · ') : id}
       back={{ href: href({ name: 'market' }), label: 'Marché' }}
     >
       {loading ? (

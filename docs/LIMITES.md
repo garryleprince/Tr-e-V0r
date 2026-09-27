@@ -27,6 +27,28 @@ encore ou fait avec des compromis. Il est mis à jour à chaque version.
   décalé pour que la dernière bougie soit celle d'hier. SOL n'y figure pas et s'affiche sans
   données. Ce mode est refusé si `ENVIRONMENT=production`.
 
+## Multi-marchés et devises
+
+- **Quota Alpha Vantage gratuit : 25 appels par jour**, partagés entre les actions (une
+  requête par action et par jour) et le taux EUR/USD (une par jour). Une liste de suivi de
+  12 actifs tient dans le quota ; au-delà, l'application sert le cache et le dit. Une clé
+  payante lève la limite : réglez alors `ALPHAVANTAGE_DAILY_LIMIT`.
+- **Sans clé Alpha Vantage**, il n'y a ni actions ni taux EUR/USD officiel. Le secours
+  Kraken (paire EURUSD) n'a pas pu être vérifié depuis l'environnement de développement.
+  Sans aucun taux, un compte en euros **refuse d'ouvrir** une position en dollars, crypto
+  comprise, ce qui est volontaire. Pour trader de la crypto sans clé Alpha Vantage,
+  réinitialisez le compte en dollars.
+- **Taux de change quotidien** : les positions sont valorisées au dernier cours de clôture
+  EUR/USD, pas en continu. Écart typique : quelques dixièmes de pour cent sur une journée.
+- **Symboles européens** : `MC.PAR`, `SAP.DEX` et `ASML.AMS` ont été vérifiés en direct.
+  Les autres (TotalEnergies, Airbus, Sanofi, L'Oréal, Schneider, BNP Paribas, Siemens,
+  Allianz) suivent la même convention, sans vérification individuelle.
+- **Actions à l'unité** (pas de fraction) : sur un petit capital, une action chère peut
+  tomber sous la taille minimale et être refusée.
+- **Jours fériés** non modélisés : quelques requêtes inutiles par an, rien de plus.
+- **Liste de suivi limitée à 12 actifs** : le cycle quotidien doit tenir dans une exécution
+  planifiée. L'étendre passera par une file de tâches (Cloudflare Queues).
+
 ## IA
 
 - Seuls l'**analyste technique** et le **trader** existent. Les analystes fondamental,
@@ -39,6 +61,9 @@ encore ou fait avec des compromis. Il est mis à jour à chaque version.
   recommandé par Anthropic. Le modèle **effectivement** utilisé est enregistré dans le
   rapport de l'agent. Pour le désactiver : retirer `fallbacks` et l'en-tête dans
   `src/server/llm/anthropic.ts`.
+- **Budget IA illimité par défaut**, conformément à votre choix. Aucun plafond n'est
+  appliqué par l'application. Fixez une limite de dépense dans la console Anthropic : c'est
+  le seul garde-fou contre une facture inattendue.
 - Les coûts sont calculés avec une table de prix intégrée au code
   (`src/server/llm/pricing.ts`). Un modèle absent de la table est facturé au tarif le plus
   élevé connu et marqué « estimé ».

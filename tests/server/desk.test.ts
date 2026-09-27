@@ -7,7 +7,7 @@ import { listDecisions } from '../../src/server/db/runs';
 import { getAccount, listTrades, openPositions } from '../../src/server/db/trading';
 import { runAnalysis } from '../../src/server/jobs/analysis';
 import { runMonitor } from '../../src/server/jobs/monitor';
-import { syntheticCandles } from '../helpers/candles';
+import { candlesFromCloses, syntheticCandles } from '../helpers/candles';
 import { TestD1 } from '../helpers/d1';
 import { clock, DEV_CONFIG, fakeDeskNamespace, FakeProvider } from '../helpers/server';
 
@@ -34,6 +34,13 @@ function upTrend(seed = 5): Candle[] {
   return [...up, ...dip];
 }
 
+/** Daily EUR/USD bars ending with the last closed bar before `now` (1 EUR = `rate` USD). */
+const EURUSD = 1.14;
+function fxBars(now: number, rate = EURUSD): Candle[] {
+  const n = 30;
+  return candlesFromCloses(Array(n).fill(rate), '1d', utcDayStart(now) - n * DAY_MS);
+}
+
 async function setup(opts: { research?: boolean } = {}) {
   const t = new TestD1();
   const db = t.asD1();
@@ -42,11 +49,13 @@ async function setup(opts: { research?: boolean } = {}) {
     'coinbase:BTC-USD': upTrend(5),
     'coinbase:ETH-USD': upTrend(7),
   });
-  const candles = new CandleService(db, [provider], c.now);
+  // The simulated account is in EUR (default); these instruments are quoted in USD.
+  const fx = new FakeProvider('alphavantage', { 'alphavantage:EURUSD': fxBars(T0) });
+  const candles = new CandleService(db, [provider, fx], c.now);
   const { stub } = fakeDeskNamespace(db, DEV_CONFIG, c.now);
   const deps = { db, config: DEV_CONFIG, candles, desk: stub, now: c.now };
   if (opts.research) await stub.setMode('RESEARCH' as never, true);
-  return { t, db, c, provider, candles, desk: stub, deps };
+  return { t, db, c, provider, fx, candles, desk: stub, deps };
 }
 
 describe('cycle d’analyse de bout en bout (sans clé IA : agents à règles)', () => {
@@ -67,13 +76,17 @@ describe('cycle d’analyse de bout en bout (sans clé IA : agents à règles)',
     expect(reports.map((r) => r.agent).sort()).toEqual(['fundamental', 'macro', 'sentiment', 'technical', 'trader']);
     expect(reports.find((r) => r.agent === 'sentiment')!.status).toBe('unavailable');
 
-    // The position respects the risk budget: loss at the stop ≤ 1 % of equity.
+    // The position respects the risk budget: loss at the stop ≤ 1 % of equity,
+    // measured in the account currency (EUR) — the stop distance is in USD.
     const [position] = await openPositions(db, 'PAPER');
     expect(position).toBeDefined();
-    const riskAtStop = (position!.avgPrice - position!.stopLoss!) * position!.quantity;
-    expect(riskAtStop).toBeLessThanOrEqual(10_000 * 0.01 * 1.01);
+    const riskAtStopEur = ((position!.avgPrice - position!.stopLoss!) * position!.quantity) / EURUSD;
+    expect(riskAtStopEur).toBeLessThanOrEqual(10_000 * 0.01 * 1.01);
     const account = (await getAccount(db, 'PAPER'))!;
+    expect(account.currency).toBe('EUR');
     expect(account.cash).toBeLessThan(10_000);
+    // Cost basis converted at the fill's rate: USD value / 1.14.
+    expect(position!.entryValue).toBeCloseTo((position!.avgPrice * position!.quantity) / EURUSD, 6);
 
     // The data available at decision time is stored with the run.
     const run = t.raw.prepare('SELECT snapshot, as_of FROM analysis_runs').get() as { snapshot: string; as_of: number };
@@ -98,6 +111,16 @@ describe('cycle d’analyse de bout en bout (sans clé IA : agents à règles)',
     expect(scheduled.status).toBe('skipped');
     const manual = await runAnalysis(deps, 'coinbase:BTC-USD', 'manual');
     expect(manual.decisionStatus).toBe('REJECTED');
+    expect(await openPositions(db, 'PAPER')).toHaveLength(0);
+  });
+
+  it('compte en euros, actif en dollars, sans taux de change : aucune ouverture (fail-closed)', async () => {
+    const { db, deps, fx } = await setup();
+    fx.setData('alphavantage:EURUSD', []);
+    fx.failWith = new Error('Alpha Vantage indisponible');
+    const outcome = await runAnalysis(deps, 'coinbase:BTC-USD', 'manual');
+    expect(outcome.decisionStatus).toBe('NOT_EXECUTED');
+    expect(outcome.note).toMatch(/Taux de change USD indisponible/);
     expect(await openPositions(db, 'PAPER')).toHaveLength(0);
   });
 
@@ -134,8 +157,9 @@ describe('cycle d’analyse de bout en bout (sans clé IA : agents à règles)',
     expect(view.tradingState).toBe('ACTIVE');
     expect(view.effectiveState).toBe('HALTED');
     const provider = new FakeProvider('coinbase', { 'coinbase:BTC-USD': upTrend() });
+    const fx = new FakeProvider('alphavantage', { 'alphavantage:EURUSD': fxBars(T0) });
     const outcome = await runAnalysis(
-      { db, config: { ...DEV_CONFIG, killSwitchForced: true }, candles: new CandleService(db, [provider], c.now), desk: stub, now: c.now },
+      { db, config: { ...DEV_CONFIG, killSwitchForced: true }, candles: new CandleService(db, [provider, fx], c.now), desk: stub, now: c.now },
       'coinbase:BTC-USD',
       'manual',
     );
@@ -143,10 +167,11 @@ describe('cycle d’analyse de bout en bout (sans clé IA : agents à règles)',
   });
 
   it('données trop anciennes : ouverture refusée (fail-closed)', async () => {
-    const { db, deps, c, provider } = await setup();
+    const { db, deps, c, provider, fx } = await setup();
     const btc = (await getInstrument(db, 'coinbase:BTC-USD'))!;
     await deps.candles.getClosedCandles(btc, '1d', 300); // cache warmed on day 0
     c.advance(5 * DAY_MS);
+    fx.setData('alphavantage:EURUSD', fxBars(c.now())); // the rate stays fresh: only prices are stale
     provider.failWith = new Error('panne du fournisseur');
     const outcome = await runAnalysis(deps, 'coinbase:BTC-USD', 'manual');
     expect(outcome.status).toBe('completed');

@@ -19,9 +19,10 @@ d'architecture).
 | --- | --- |
 | Interface | PWA iPhone en français, thème sombre et clair, onglets Accueil / Marché / IA / Portefeuille / Plus, hors ligne pour la coque (jamais pour les prix) |
 | Authentification | Compte propriétaire unique, cookie HttpOnly `__Host-`, ré-authentification pour les actions sensibles, verrouillage après échecs |
-| Données de marché | Coinbase (crypto, Kraken en secours), Alpha Vantage (actions et ETF, quotidien) ; bougies **clôturées** uniquement |
+| Marchés | Crypto (Coinbase, Kraken en secours), actions US, actions européennes (Paris, Xetra, Amsterdam) via Alpha Vantage ; bougies **clôturées** uniquement |
+| Devises | Compte en euros par défaut (ou en dollars) ; tout actif coté dans une autre devise est converti au taux EUR/USD du jour, effet de change inclus dans les résultats |
 | Graphiques | Chandeliers, volume dans un panneau séparé, MM50 et MM200, lignes Entrée / Stop / Objectif, réticule, vue tableau ; capital et drawdown |
-| IA | Analyste technique et trader (Claude par défaut, ou tout fournisseur compatible OpenAI) ; sans clé, analyste à règles signalé « sans IA » |
+| IA | Analyste technique et trader (Claude par défaut, ou tout fournisseur compatible OpenAI) ; sans clé, analyste à règles signalé « sans IA » ; budget quotidien illimité par défaut (plafond activable) |
 | Risque | Risk Engine avec 20 limites, plafonds en dur, coupe-circuit ACTIF / RÉDUCTION / ARRÊT, arrêt forcé par variable de déploiement |
 | Simulation | Compte fictif, frais et glissement, surveillance des stops toutes les 15 minutes |
 | Journal | Chaque analyse : données au moment de la décision, rapports d'agents, échange exact avec le modèle, décision, verdict règle par règle, ordre, coût |
@@ -53,7 +54,7 @@ terminal, `npm run dev` dans un autre (Vite redirige `/api` vers le Worker).
 
 ```bash
 npm run typecheck        # web, Worker et tests, TypeScript strict
-npm test                 # 127 tests : quant, agents, risque, simulation, backtest, auth, API, architecture
+npm test                 # 135 tests : quant, agents, risque, simulation, backtest, auth, API, architecture
 npm run verify:browser   # parcours complet sur iPhone émulé (Worker local lancé, base vide)
 ```
 

@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { mutate, put } from '../app/api';
+import { exchangeOf, MARKET_LABELS, marketOf, symbolOf } from '../app/format';
 import { href } from '../app/router';
 import { useApp, type Theme } from '../app/store';
 import type { Settings, SettingsResponse, Timeframe } from '../app/types';
 import { useApi } from '../app/useApi';
 import { IconMoon, IconSun } from '../ui/icons';
 import { Button, Card, ErrorBlock, Field, LoadingBlock, Notice, Pill, Screen, Section, Segmented, Toggle } from '../ui/primitives';
+
+/** Same bound as the server's watchlist schema: the daily cycle must fit in one cron run. */
+const WATCHLIST_MAX = 12;
 
 export function SettingsScreen() {
   const { data, error, loading, reload } = useApi<SettingsResponse>('/settings');
@@ -62,18 +66,38 @@ function WatchlistSection({ data }: { data: SettingsResponse }) {
     setBusy(false);
   };
   const equityDaily = tf !== '1d' && ids.some((id) => data.instruments.find((i) => i.id === id)?.assetClass !== 'crypto');
+  const full = ids.length >= WATCHLIST_MAX;
+  const needsKey = !data.secrets.alphaVantage && ids.some((id) => id.startsWith('alphavantage:'));
   return (
     <Section title="Liste de suivi">
       <Card className="stack">
-        {data.instruments.map((i) => (
-          <Toggle
-            key={i.id}
-            checked={ids.includes(i.id)}
-            onChange={(on) => toggle(i.id, on)}
-            label={`${i.displayName}`}
-            hint={`${i.symbol} · ${i.assetClass === 'crypto' ? 'crypto, Coinbase (Kraken en secours)' : 'Alpha Vantage, quotidien uniquement'}`}
-          />
+        <p className="small muted">
+          {ids.length} / {WATCHLIST_MAX} actifs. Chacun est analysé une fois par jour ; les actions consomment une requête Alpha Vantage par jour.
+        </p>
+        {needsKey ? (
+          <Notice tone="warn" title="Clé Alpha Vantage absente">
+            Les actions US et européennes ne peuvent pas être chargées sans le secret ALPHAVANTAGE_API_KEY (gratuit sur alphavantage.co).
+          </Notice>
+        ) : null}
+        {(['crypto', 'us', 'eu'] as const).map((group) => (
+          <div key={group} className="stack">
+            <div className="eyebrow">{MARKET_LABELS[group]}</div>
+            {data.instruments
+              .filter((i) => i.assetClass !== 'fx' && marketOf(i) === group)
+              .map((i) => (
+                <Toggle
+                  key={i.id}
+                  checked={ids.includes(i.id)}
+                  onChange={(on) => (on && full ? undefined : toggle(i.id, on))}
+                  label={i.displayName}
+                  hint={`${symbolOf(i.id)} · ${i.quoteCurrency} · ${
+                    group === 'crypto' ? 'Coinbase (Kraken en secours)' : `${exchangeOf(i.symbol) ?? 'NYSE / Nasdaq'}, quotidien`
+                  }`}
+                />
+              ))}
+          </div>
         ))}
+        {full ? <p className="micro dim">Maximum atteint : retirez un actif pour en ajouter un autre.</p> : null}
         <Field label="Unité de temps des analyses">
           {() => (
             <Segmented<Timeframe>
@@ -100,17 +124,22 @@ function WatchlistSection({ data }: { data: SettingsResponse }) {
 
 function LlmSection({ data }: { data: SettingsResponse }) {
   const [llm, setLlm] = useState<Settings['llm']>(data.settings.llm);
-  const [budget, setBudget] = useState(String(data.settings.llm.dailyBudgetUsd));
+  const [budget, setBudget] = useState(String(data.settings.llm.dailyBudgetUsd ?? 5));
+  const [unlimited, setUnlimited] = useState(data.settings.llm.dailyBudgetUsd === null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setLlm(data.settings.llm);
-    setBudget(String(data.settings.llm.dailyBudgetUsd));
+    setBudget(String(data.settings.llm.dailyBudgetUsd ?? 5));
+    setUnlimited(data.settings.llm.dailyBudgetUsd === null);
   }, [data]);
   const set = <K extends keyof Settings['llm']>(k: K, v: Settings['llm'][K]) => setLlm((x) => ({ ...x, [k]: v }));
   const budgetValue = Number(budget.replace(',', '.'));
   const save = async () => {
     setBusy(true);
-    await mutate(() => put('/settings/llm', { ...llm, dailyBudgetUsd: budgetValue, baseUrl: llm.baseUrl?.trim() || null }), 'Réglages IA enregistrés');
+    await mutate(
+      () => put('/settings/llm', { ...llm, dailyBudgetUsd: unlimited ? null : budgetValue, baseUrl: llm.baseUrl?.trim() || null }),
+      'Réglages IA enregistrés',
+    );
     setBusy(false);
   };
   const keyPresent = llm.provider === 'anthropic' ? data.secrets.anthropic : llm.provider === 'openai-compatible' ? data.secrets.openaiCompatible : true;
@@ -175,9 +204,17 @@ function LlmSection({ data }: { data: SettingsResponse }) {
                 />
               )}
             </Field>
-            <Field label="Budget quotidien ($)" hint="Au-delà, les appels sont refusés jusqu’au lendemain (UTC).">
-              {(id) => <input id={id} className="input num" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />}
-            </Field>
+            <Toggle
+              checked={unlimited}
+              onChange={setUnlimited}
+              label="Budget quotidien illimité"
+              hint="Aucun plafond dans l’application : seule la limite de dépense de votre compte chez le fournisseur s’applique. Réglez-en une dans sa console."
+            />
+            {!unlimited ? (
+              <Field label="Budget quotidien ($)" hint="Au-delà, les appels sont refusés jusqu’au lendemain (UTC).">
+                {(id) => <input id={id} className="input num" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />}
+              </Field>
+            ) : null}
             <Toggle
               checked={llm.fallbackToRules}
               onChange={(v) => set('fallbackToRules', v)}
@@ -186,7 +223,7 @@ function LlmSection({ data }: { data: SettingsResponse }) {
             />
           </>
         ) : null}
-        <Button variant="primary" loading={busy} disabled={!Number.isFinite(budgetValue) || budgetValue < 0} onClick={save}>
+        <Button variant="primary" loading={busy} disabled={!unlimited && (!Number.isFinite(budgetValue) || budgetValue < 0)} onClick={save}>
           Enregistrer
         </Button>
       </Card>

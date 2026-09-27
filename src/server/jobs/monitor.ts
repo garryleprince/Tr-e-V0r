@@ -4,6 +4,7 @@ import { beat, getInstrument } from '../db/core';
 import { openPositions } from '../db/trading';
 import type { MonitorInput, MonitorResult } from '../desk/desk-core';
 import { errorMessage, log } from '../util';
+import { refreshFx } from '../data/fx';
 
 /**
  * Position monitoring (every 15 minutes): triple barrier, mark-to-market,
@@ -43,6 +44,8 @@ export async function runMonitor(deps: MonitorDeps): Promise<MonitorResult> {
       inputs.push({ positionId: p.id, bars: [], barMs: TIMEFRAME_MS[tf], mark: null });
     }
   }
+  // Valuations in the account currency need today's rate (one vendor call a day at most).
+  await refreshFx(db, deps.candles, now());
   const result = await deps.desk.monitor(inputs);
   await beat(db, 'monitor', now(), 'ok', `${positions.length} position(s), ${result.exits.length} sortie(s)`);
   return result;

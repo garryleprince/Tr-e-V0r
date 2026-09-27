@@ -2,6 +2,8 @@ import type { Candle, Instrument, Quote } from '../../core/domain/market';
 import { DAY_MS, utcDayStart, type Timeframe } from '../../core/domain/time';
 import btc from './fixtures/btc-usd-1d.json';
 import eth from './fixtures/eth-usd-1d.json';
+import eurusd from './fixtures/eurusd-1d.json';
+import mcPar from './fixtures/mc-par-1d.json';
 import spy from './fixtures/spy-1d.json';
 import { ProviderError, type MarketDataProvider } from './types';
 
@@ -10,7 +12,8 @@ import { ProviderError, type MarketDataProvider } from './types';
  * (`readConfig` refuses MARKET_DATA_MODE=fixture there, and the UI shows a red
  * banner whenever this provider is active).
  *
- * The files hold real daily history retrieved from Alpha Vantage on 2026-09-26.
+ * The files hold real daily history retrieved from Alpha Vantage on 2026-09-26
+ * (BTC, ETH, SPY) and 2026-09-27 (LVMH on Euronext Paris, EUR/USD).
  * To exercise the "fresh data" paths, the series is shifted in time so that its
  * last CLOSED bar ends at the most recent UTC midnight. Prices and their order
  * are untouched; only the dates move. The bar that was still forming when the
@@ -27,10 +30,12 @@ const FILES: Record<string, FixtureFile> = {
   'BTC-USD': btc as FixtureFile,
   'ETH-USD': eth as FixtureFile,
   SPY: spy as FixtureFile,
+  'MC.PAR': mcPar as FixtureFile,
+  EURUSD: eurusd as FixtureFile,
 };
 
 export const FIXTURE_NOTICE =
-  'Données de démonstration : historique réel enregistré le 26/09/2026 (Alpha Vantage), décalé dans le temps. Ne reflète pas le marché actuel.';
+  'Données de démonstration : historique réel enregistré les 26 et 27/09/2026 (Alpha Vantage), décalé dans le temps. Ne reflète pas le marché actuel.';
 
 export class FixtureProvider implements MarketDataProvider {
   readonly id = 'fixture';

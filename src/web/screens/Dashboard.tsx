@@ -65,7 +65,7 @@ function DashboardBody({ d }: { d: Dashboard }) {
             </div>
           </Card>
         ) : (
-          <Empty title="Compte de simulation pas encore créé">Il sera ouvert avec 10 000 $ fictifs à la première analyse.</Empty>
+          <Empty title="Compte de simulation pas encore créé">Il sera ouvert avec 10 000 € fictifs à la première analyse.</Empty>
         )}
       </Section>
 
@@ -90,7 +90,7 @@ function DashboardBody({ d }: { d: Dashboard }) {
             {d.llm.available ? `Modèle : ${d.llm.deepModel}` : 'Analyste à règles (sans IA)'}
           </span>
           <span className="num">
-            Budget IA : {usd(d.llm.spentTodayUsd)} / {usd(d.llm.dailyBudgetUsd)}
+            IA aujourd’hui : {usd(d.llm.spentTodayUsd)} / {d.llm.dailyBudgetUsd === null ? 'sans limite' : usd(d.llm.dailyBudgetUsd)}
           </span>
         </div>
       </Section>

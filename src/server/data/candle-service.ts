@@ -1,5 +1,5 @@
 import { normaliseCandles, type Candle, type Instrument, type Quote } from '../../core/domain/market';
-import { barCloseTime, isBarClosed, MINUTE_MS, TIMEFRAME_MS, type Timeframe } from '../../core/domain/time';
+import { barCloseTime, DAY_MS, isBarClosed, MINUTE_MS, TIMEFRAME_MS, type Timeframe } from '../../core/domain/time';
 import { getCandles, getFetchRecord, getQuote, putFetchRecord, putQuote, upsertCandles } from '../db/core';
 import { errorMessage, log } from '../util';
 import { DAILY_EQUITY_MAX_AGE_MS } from './providers';
@@ -61,7 +61,7 @@ export class CandleService {
     const slow = providers[0]?.id === 'alphavantage';
     const minInterval = slow ? SLOW_VENDOR_REFRESH_MS : REFRESH_MS[tf];
     const lastCached = cached.candles[cached.candles.length - 1];
-    const expectedLatestClose = Math.floor(now / TIMEFRAME_MS[tf]) * TIMEFRAME_MS[tf];
+    const expectedLatestClose = expectedLatestBarClose(instrument, tf, now);
     const behind = !lastCached || barCloseTime(lastCached.t, tf) < expectedLatestClose;
     const due = !record || now - record.fetchedAt >= minInterval;
     const needRefresh = cached.candles.length < Math.min(limit, 60) || (behind && due) || (opts.force && due);
@@ -128,4 +128,23 @@ export class CandleService {
 function asOf(candles: readonly Candle[], tf: Timeframe): number | null {
   const last = candles[candles.length - 1];
   return last ? barCloseTime(last.t, tf) : null;
+}
+
+/**
+ * Close time of the most recent bar that should exist by `now`. Session markets
+ * (equities, FX) publish no weekend daily bar: expecting one would re-query a
+ * rate-limited vendor all weekend for nothing (25 calls a day on Alpha Vantage's
+ * free tier). Holidays are not modelled: at worst a few extra calls a year.
+ */
+export function expectedLatestBarClose(instrument: Instrument, tf: Timeframe, now: number): number {
+  const step = TIMEFRAME_MS[tf];
+  let close = Math.floor(now / step) * step;
+  if (tf === '1d' && instrument.assetClass !== 'crypto') {
+    for (let i = 0; i < 3; i++) {
+      const barDay = new Date(close - DAY_MS).getUTCDay();
+      if (barDay !== 0 && barDay !== 6) break;
+      close -= DAY_MS;
+    }
+  }
+  return close;
 }

@@ -7,12 +7,13 @@
 // Starts from an empty database (the owner account must not exist yet).
 // Screenshots go to test-results/e2e/. The run fails on any console error,
 // any 5xx answer, or any missing element.
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { chromiumPath } from '../../scripts/chromium-path.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:8787';
 const OUT = new URL('../../test-results/e2e/', import.meta.url).pathname;
+rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
 function setupToken() {
@@ -90,8 +91,16 @@ try {
 
   // 3. Market and asset chart.
   await go('#/market');
-  await page.getByRole('heading', { name: 'Actifs suivis' }).waitFor();
+  for (const group of ['Crypto', 'Actions US', 'Actions Europe']) {
+    await page.getByRole('heading', { name: group, level: 2 }).waitFor();
+  }
   await shot('marche');
+  // A European equity, quoted in EUR (recorded Euronext Paris data in demo mode).
+  await go('#/asset/alphavantage%3AMC.PAR');
+  await page.locator('.chart-canvas canvas').first().waitFor();
+  await page.getByText('Euronext Paris').first().waitFor();
+  await page.waitForTimeout(400);
+  await shot('actif-europe');
   await go('#/asset/coinbase%3ABTC-USD');
   await page.locator('.chart-canvas canvas').first().waitFor();
   await page.getByText('MM50').first().waitFor();
@@ -116,6 +125,8 @@ try {
   // 5. Portfolio, equity and positions.
   await go('#/portfolio');
   await page.getByText('Capital', { exact: true }).first().waitFor();
+  // EUR account, USD-quoted crypto: the position shows the conversion it used.
+  await page.getByText(/1 USD = [0-9,]+ EUR/).first().waitFor();
   await page.waitForTimeout(300);
   await shot('portefeuille', { fullPage: true });
 

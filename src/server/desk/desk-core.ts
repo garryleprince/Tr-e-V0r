@@ -1,11 +1,12 @@
+import { DEFAULT_ACCOUNT_CURRENCY, type AccountCurrency } from '../../core/domain/fx';
 import type { Candle, Instrument } from '../../core/domain/market';
 import { PAPER_STARTING_CASH, type Settings } from '../../core/domain/settings';
 import { utcDayStart } from '../../core/domain/time';
 import type { ClosedTrade, Mode, OpenPosition, OrderIntent, TradingState } from '../../core/domain/trading';
-import { applyBuy, applySell } from '../../core/portfolio/ledger';
+import { applyBuy, applySell, entryFx } from '../../core/portfolio/ledger';
 import { evaluateIntent, requiredStateFromHealth, type MarketFacts, type RiskVerdict } from '../../core/risk/engine';
 import { evaluateBarriers } from '../../core/sim/exchange';
-import { eventStatement, getInstrument, getSettings } from '../db/core';
+import { eventStatement, getInstrument, getSettings, latestFxRates, openingFx, valuationFx } from '../db/core';
 import {
   closePosition,
   countNewOrdersSince,
@@ -64,7 +65,8 @@ export interface DeskView {
 
 export interface SubmitRequest {
   readonly intent: OrderIntent;
-  readonly market: Omit<MarketFacts, 'instrument'>;
+  /** The desk resolves the instrument and the currency conversion itself. */
+  readonly market: Omit<MarketFacts, 'instrument' | 'fx'>;
   readonly correlations: Readonly<Record<string, number>>;
 }
 
@@ -188,7 +190,7 @@ export class DeskCore {
     if (existing) return existing;
     const created: AccountRow = {
       mode,
-      currency: 'USD',
+      currency: DEFAULT_ACCOUNT_CURRENCY,
       startingCash: PAPER_STARTING_CASH,
       cash: PAPER_STARTING_CASH,
       peakEquity: PAPER_STARTING_CASH,
@@ -206,7 +208,7 @@ export class DeskCore {
     return created;
   }
 
-  async resetPaper(startingCash: number, stepUp: boolean): Promise<AccountRow> {
+  async resetPaper(startingCash: number, stepUp: boolean, currency?: AccountCurrency): Promise<AccountRow> {
     if (!stepUp) throw new StepUpRequiredError('réinitialiser le compte de simulation');
     if (!(startingCash >= 100 && startingCash <= 10_000_000)) throw new RangeError('capital initial hors bornes (100 à 10 000 000)');
     const open = await openPositions(this.db, 'PAPER');
@@ -215,6 +217,7 @@ export class DeskCore {
     const current = await this.account('PAPER');
     const reset: AccountRow = {
       ...current,
+      currency: currency ?? current.currency,
       startingCash,
       cash: startingCash,
       peakEquity: startingCash,
@@ -232,7 +235,7 @@ export class DeskCore {
         type: 'paper_reset',
         severity: 'warning',
         actor: 'user',
-        title: `Compte de simulation réinitialisé (${startingCash} USD)`,
+        title: `Compte de simulation réinitialisé (${startingCash} ${currency ?? current.currency})`,
       }),
     ]);
     return reset;
@@ -248,6 +251,12 @@ export class DeskCore {
     if (!instrument) throw new Error(`instrument inconnu : ${req.intent.instrumentId}`);
     const bookMode: Mode = desk.mode === 'LIVE' ? 'LIVE' : 'PAPER';
     const book = await this.book(bookMode, settings, { [instrument.id]: req.market.referencePrice });
+    const currency = book.account.currency;
+    // Openings need a fresh rate (fail-closed); a sale uses the last known rate,
+    // or the position's own entry rate, so that a brake is never blocked.
+    const fxOpen = openingFx(book.fx, instrument.quoteCurrency, currency);
+    const held0 = book.positions.find((p) => p.instrumentId === instrument.id) ?? null;
+    const fxSell = valuationFx(book.fx, instrument.quoteCurrency, currency) ?? (held0 ? entryFx(held0) : null);
 
     const { verdict, order } = evaluateIntent(req.intent, {
       now,
@@ -258,13 +267,13 @@ export class DeskCore {
       cash: book.account.cash,
       peakEquity: Math.max(book.account.peakEquity, book.equity),
       dayStartEquity: book.account.dayStartEquity,
-      positions: book.positions.map((p) => ({ instrumentId: p.instrumentId, quantity: p.quantity, markPrice: book.marks[p.instrumentId] ?? p.avgPrice })),
+      positions: book.rows.map((r) => ({ instrumentId: r.position.instrumentId, quantity: r.position.quantity, markPrice: r.mark, fx: r.fx })),
       consecutiveLosses: book.account.consecutiveLosses,
       lastLossAt: book.account.lastLossAt,
       newOrdersToday: await countNewOrdersSince(this.db, bookMode, utcDayStart(now)),
       correlations: req.correlations,
       feeBps: settings.costs.feeBps,
-      market: { ...req.market, instrument },
+      market: { ...req.market, instrument, fx: req.intent.reduceOnly ? fxSell : fxOpen },
     });
 
     const verdictId = newId();
@@ -343,9 +352,11 @@ export class DeskCore {
       return { verdict, verdictId, executed: false, note: report.reason, fillPrice: null, positionId: null, mode: desk.mode };
     }
 
-    const held = book.positions.find((p) => p.instrumentId === instrument.id) ?? null;
+    const held = held0;
+    const fillFx = order.side === 'BUY' ? fxOpen : fxSell;
+    if (fillFx === null) throw new Error('taux de change indisponible pour convertir l’exécution'); // unreachable: the Risk Engine blocks it
     writes.push(insertOrder(this.db, orderRecord(orderId, order, instrument, verdictId, 'FILLED', req.intent.reason, now)));
-    writes.push(insertFill(this.db, orderId, report.fill));
+    writes.push(insertFill(this.db, orderId, report.fill, fillFx));
     let account = book.account;
     let positionId: string | null = null;
     if (order.side === 'BUY') {
@@ -357,15 +368,15 @@ export class DeskCore {
         takeProfit: order.takeProfit,
         expiresAt: order.expiresAt,
         decisionId: order.decisionId,
-      });
+      }, fillFx);
       account = { ...account, cash: next.cash };
       positionId = next.position!.id;
       writes.push(upsertOpenPosition(this.db, next.position!, now));
     } else {
-      const res = applySell({ cash: account.cash, position: held }, report.fill, req.intent.origin === 'manual' ? 'manual' : 'signal');
+      const res = applySell({ cash: account.cash, position: held }, report.fill, req.intent.origin === 'manual' ? 'manual' : 'signal', fillFx);
       account = afterTrade({ ...account, cash: res.state.cash }, res.trade);
       positionId = held!.id;
-      writes.push(...this.closeWrites(held!, res.state.position, res.trade, bookMode, now));
+      writes.push(...this.closeWrites(held!, res.state.position, res.trade, bookMode, now, currency));
     }
     writes.push(
       eventStatement(this.db, {
@@ -374,7 +385,7 @@ export class DeskCore {
         severity: 'info',
         actor: req.intent.origin === 'ai' ? 'agent' : 'user',
         title: `${order.side === 'BUY' ? 'Achat' : 'Vente'} ${instrument.displayName} — ${round(report.fill.quantity)} @ ${round(report.fill.price)}`,
-        data: { orderId, decisionId: order.decisionId, fee: report.fill.fee, slippageBps: report.fill.slippageBps },
+        data: { orderId, decisionId: order.decisionId, fee: report.fill.fee, slippageBps: report.fill.slippageBps, fx: fillFx, quoteCurrency: instrument.quoteCurrency },
       }),
     );
     writes.push(putAccount(this.db, account));
@@ -401,6 +412,7 @@ export class DeskCore {
     const exits: MonitorResult['exits'] = [];
     const transitions: string[] = [];
     let account = await this.rollDay(await this.account('PAPER'), 'PAPER', settings, transitions);
+    const fxView = await latestFxRates(this.db, now);
 
     for (const input of inputs) {
       const position = positions.find((p) => p.id === input.positionId);
@@ -412,6 +424,7 @@ export class DeskCore {
       }
       const instrument = await getInstrument(this.db, position.instrumentId);
       if (!instrument) continue;
+      const exitFx = valuationFx(fxView, instrument.quoteCurrency, account.currency) ?? entryFx(position);
       // A protective exit is a brake: it goes through the Risk Engine like
       // everything else, which lets it pass even when trading is HALTED.
       const { verdict, order } = evaluateIntent(
@@ -439,7 +452,7 @@ export class DeskCore {
           cash: account.cash,
           peakEquity: account.peakEquity,
           dayStartEquity: account.dayStartEquity,
-          positions: [{ instrumentId: position.instrumentId, quantity: position.quantity, markPrice: exit.price }],
+          positions: [{ instrumentId: position.instrumentId, quantity: position.quantity, markPrice: exit.price, fx: exitFx }],
           consecutiveLosses: account.consecutiveLosses,
           lastLossAt: account.lastLossAt,
           newOrdersToday: 0,
@@ -454,13 +467,14 @@ export class DeskCore {
             avgDollarVolume: null,
             bid: null,
             ask: null,
+            fx: exitFx,
           },
         },
       );
       if (!order) continue;
       const report = await new PaperVenue(settings.costs).execute(order, { referencePrice: exit.price, bid: null, ask: null, ts: Math.max(exit.ts, position.openedAt) });
       if (report.status !== 'FILLED') continue;
-      const res = applySell({ cash: account.cash, position }, report.fill, exit.reason);
+      const res = applySell({ cash: account.cash, position }, report.fill, exit.reason, exitFx);
       account = afterTrade({ ...account, cash: res.state.cash }, res.trade);
       const orderId = newId();
       const verdictId = newId();
@@ -479,15 +493,15 @@ export class DeskCore {
           createdAt: now,
         }),
         insertOrder(this.db, orderRecord(orderId, order, instrument, verdictId, 'FILLED', `Sortie ${exit.reason}`, now)),
-        insertFill(this.db, orderId, report.fill),
-        ...this.closeWrites(position, res.state.position, res.trade, 'PAPER', now),
+        insertFill(this.db, orderId, report.fill, exitFx),
+        ...this.closeWrites(position, res.state.position, res.trade, 'PAPER', now, account.currency),
         putAccount(this.db, account),
         eventStatement(this.db, {
           ts: now,
           type: 'position_exit',
           severity: res.trade.pnl < 0 ? 'warning' : 'info',
           actor: 'system',
-          title: `${EXIT_TITLES[exit.reason]} — ${instrument.displayName} (${res.trade.pnl >= 0 ? '+' : ''}${round(res.trade.pnl)} USD)`,
+          title: `${EXIT_TITLES[exit.reason]} — ${instrument.displayName} (${res.trade.pnl >= 0 ? '+' : ''}${round(res.trade.pnl)} ${account.currency})`,
           data: { positionId: position.id, reason: exit.reason, price: report.fill.price, pnl: res.trade.pnl },
         }),
       ]);
@@ -554,19 +568,33 @@ export class DeskCore {
   private async book(mode: Mode, settings: Settings, marks: Record<string, number>) {
     const transitions: string[] = [];
     const account = await this.rollDay(await this.account(mode), mode, settings, transitions);
+    const v = await this.valuation(mode, account.currency, marks);
+    return { account, positions: v.positions, rows: v.rows, fx: v.fx, equity: account.cash + v.value };
+  }
+
+  /**
+   * Open positions valued in the account currency: last price (quote currency)
+   * × last known rate, or the position's entry rate when no rate is known.
+   */
+  private async valuation(mode: Mode, currency: string, marks: Record<string, number> = {}) {
     const positions = await openPositions(this.db, mode);
-    const allMarks = { ...(await this.lastPrices(positions.map((p) => p.instrumentId))), ...marks };
-    const value = positions.reduce((a, p) => a + p.quantity * (allMarks[p.instrumentId] ?? p.avgPrice), 0);
-    return { account, positions, marks: allMarks, equity: account.cash + value };
+    const fx = await latestFxRates(this.db, this.now());
+    const prices = { ...(await this.lastPrices(positions.map((p) => p.instrumentId))), ...marks };
+    const rows: { position: (typeof positions)[number]; mark: number; fx: number; value: number }[] = [];
+    for (const position of positions) {
+      const instrument = await getInstrument(this.db, position.instrumentId);
+      const rate = valuationFx(fx, instrument?.quoteCurrency ?? currency, currency) ?? entryFx(position);
+      const mark = prices[position.instrumentId] ?? position.avgPrice;
+      rows.push({ position, mark, fx: rate, value: position.quantity * mark * rate });
+    }
+    return { positions, rows, fx, value: rows.reduce((a, r) => a + r.value, 0) };
   }
 
   /** New UTC day: reset the day's reference equity; lift an automatic daily-loss pause. */
   private async rollDay(account: AccountRow, mode: Mode, settings: Settings, transitions: string[]): Promise<AccountRow> {
     const today = utcDayStart(this.now());
     if (account.day === today) return account;
-    const positions = await openPositions(this.db, mode);
-    const marks = await this.lastPrices(positions.map((p) => p.instrumentId));
-    const equity = account.cash + positions.reduce((a, p) => a + p.quantity * (marks[p.instrumentId] ?? p.avgPrice), 0);
+    const equity = account.cash + (await this.valuation(mode, account.currency)).value;
     const next = { ...account, day: today, dayStartEquity: equity };
     await putAccount(this.db, next).run();
     const state = await this.ensureState();
@@ -601,8 +629,9 @@ export class DeskCore {
     trade: ClosedTrade,
     mode: Mode,
     now: number,
+    currency: string,
   ): D1PreparedStatement[] {
-    const writes = [insertTrade(this.db, mode, before.id, before.decisionId, trade)];
+    const writes = [insertTrade(this.db, mode, before.id, before.decisionId, trade, currency)];
     if (after) writes.push(upsertOpenPosition(this.db, after, now));
     else writes.push(closePosition(this.db, before.id, trade.closedAt, trade.exitPrice, trade.pnl, trade.exitReason));
     return writes;
@@ -611,9 +640,7 @@ export class DeskCore {
   private async snapshotEquity(mode: Mode, settings: Settings, marks: Record<string, number> = {}): Promise<number> {
     const now = this.now();
     const account = (await getAccount(this.db, mode))!;
-    const positions = await openPositions(this.db, mode);
-    const prices = { ...(await this.lastPrices(positions.map((p) => p.instrumentId))), ...marks };
-    const value = positions.reduce((a, p) => a + p.quantity * (prices[p.instrumentId] ?? p.avgPrice), 0);
+    const { positions, value } = await this.valuation(mode, account.currency, marks);
     const equity = account.cash + value;
     const peak = Math.max(account.peakEquity, equity);
     await this.db.batch([

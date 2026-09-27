@@ -123,9 +123,39 @@ export function pnlClass(v: number | null | undefined): string {
   return v > 0 ? 'good' : 'bad';
 }
 
+/** Short symbol: `coinbase:BTC-USD` → BTC, `alphavantage:MC.PAR` → MC. */
 export function symbolOf(instrumentId: string): string {
   const s = instrumentId.split(':')[1] ?? instrumentId;
-  return s.replace(/-USD$/, '');
+  return s.replace(/-(USD|EUR)$/, '').replace(/\.[A-Z]{3}$/, '');
+}
+
+const EXCHANGES: Readonly<Record<string, string>> = {
+  PAR: 'Euronext Paris',
+  AMS: 'Euronext Amsterdam',
+  DEX: 'Xetra',
+  FRK: 'Francfort',
+  LON: 'Londres',
+};
+
+/** Exchange of a suffixed symbol (`SAP.DEX` → Xetra), or null. */
+export function exchangeOf(symbol: string): string | null {
+  const m = /\.([A-Z]{3})$/.exec(symbol);
+  return m ? (EXCHANGES[m[1]!] ?? m[1]!) : null;
+}
+
+export type MarketGroup = 'crypto' | 'us' | 'eu' | 'fx';
+
+export const MARKET_LABELS: Readonly<Record<MarketGroup, string>> = {
+  crypto: 'Crypto',
+  us: 'Actions US',
+  eu: 'Actions Europe',
+  fx: 'Change',
+};
+
+export function marketOf(instrument: { assetClass: string; symbol: string }): MarketGroup {
+  if (instrument.assetClass === 'crypto') return 'crypto';
+  if (instrument.assetClass === 'fx') return 'fx';
+  return exchangeOf(instrument.symbol) ? 'eu' : 'us';
 }
 
 /** Ends a sentence that may or may not already end with punctuation. */

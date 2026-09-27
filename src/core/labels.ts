@@ -73,7 +73,7 @@ export const RISK_LIMIT_LABELS: Readonly<Record<keyof RiskLimits, string>> = {
   maxStopDistancePct: 'Distance maximale du stop (%)',
   maxEntryDeviationPct: 'Écart maximal entrée / marché (%)',
   maxCorrelation: 'Corrélation maximale entre positions',
-  minAvgDollarVolume: 'Liquidité minimale (volume moyen par bougie, $)',
+  minAvgDollarVolume: 'Liquidité minimale (volume moyen par bougie, devise du compte)',
   maxParticipationPct: 'Part maximale du volume moyen (%)',
   maxSpreadBps: 'Spread maximal (points de base)',
   maxNewOrdersPerDay: 'Nouveaux ordres maximum par jour',

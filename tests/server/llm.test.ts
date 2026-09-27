@@ -169,6 +169,11 @@ describe('passerelle : budget et configuration', () => {
     const third = await budgeted.generateStructured(req);
     expect(third.ok === false && third.error.kind).toBe('budget_exceeded');
     expect(calls).toBe(2);
+
+    // Explicit "no limit" (owner's choice): never refused by the app.
+    const unlimited = new BudgetedLlm(inner, null, 1_000);
+    expect((await unlimited.generateStructured(req)).ok).toBe(true);
+    expect(calls).toBe(3);
   });
 
   it('sans clé, le fournisseur est déclaré indisponible (pas d’erreur)', () => {

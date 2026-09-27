@@ -10,10 +10,13 @@ import {
 } from '../../core/domain/settings';
 import { barsPerYear, TimeframeSchema, utcDayStart, type Timeframe } from '../../core/domain/time';
 import { ModeSchema, TradingStateSchema } from '../../core/domain/trading';
+import { ACCOUNT_CURRENCIES } from '../../core/domain/fx';
+import { entryFx } from '../../core/portfolio/ledger';
 import { bollinger, sma } from '../../core/quant/indicators';
 import { computeSnapshot, MIN_BARS_FOR_SNAPSHOT } from '../../core/quant/features';
 import { looseningChanges, RiskLimitsSchema, RISK_LIMIT_LABELS } from '../../core/risk/limits';
 import { FIXTURE_NOTICE } from '../data/fixture';
+import { refreshFx } from '../data/fx';
 import {
   acknowledgeEvent,
   addEvent,
@@ -24,6 +27,8 @@ import {
   listEvents,
   listInstruments,
   putSetting,
+  valuationFx,
+  vendorCallsToday,
 } from '../db/core';
 import { getRunDetail, listDecisions, listRuns, llmSpendSince } from '../db/runs';
 import { equityCurve, getAccount, listOrders, listTrades, openPositions } from '../db/trading';
@@ -197,13 +202,16 @@ appRoutes.post('/portfolio/positions/:id/close', async (c) => {
   return ok(c, result);
 });
 
-const ResetSchema = z.strictObject({ startingCash: z.number().min(100).max(10_000_000) });
+const ResetSchema = z.strictObject({
+  startingCash: z.number().min(100).max(10_000_000),
+  currency: z.enum(ACCOUNT_CURRENCIES).optional(),
+});
 
 appRoutes.post('/portfolio/reset', async (c) => {
-  const { startingCash } = await parse(c, ResetSchema);
+  const { startingCash, currency } = await parse(c, ResetSchema);
   const s = services(c);
   try {
-    return ok(c, await s.desk.resetPaper(startingCash, hasStepUp(c)));
+    return ok(c, await s.desk.resetPaper(startingCash, hasStepUp(c), currency));
   } catch (err) {
     throw deskError(err);
   }
@@ -336,6 +344,8 @@ appRoutes.get('/system', async (c) => {
     llm: await llmStatus(c, settings),
     providers: {
       alphaVantageKey: s.config.keys.alphaVantage !== null,
+      alphaVantageCallsToday: await vendorCallsToday(s.db, 'alphavantage', Date.now()),
+      alphaVantageDailyLimit: s.config.alphaVantageDailyLimit,
     },
   });
 });
@@ -351,6 +361,10 @@ async function watchlistSummaries(c: AppContext, settings: Settings) {
       if (!instrument) return { instrumentId: id, error: 'instrument inconnu' };
       try {
         const data = await s.candles.getClosedCandles(instrument, tf, 300);
+        if (data.candles.length === 0) {
+          // Say why instead of showing empty prices (missing key, unsupported timeframe, quota…).
+          return { instrumentId: id, instrument, error: data.warnings.join(' ; ') || 'aucune donnée' };
+        }
         const snap = data.candles.length >= MIN_BARS_FOR_SNAPSHOT ? computeSnapshot(id, tf, data.candles) : null;
         const quote = instrument.assetClass === 'crypto' ? await s.candles.getQuote(instrument) : null;
         return {
@@ -388,6 +402,7 @@ async function portfolioSummary(c: AppContext, settings: Settings) {
     return { initialized: false as const, riskLimits: settings.risk };
   }
   const positions = await openPositions(s.db, 'PAPER');
+  const fx = await refreshFx(s.db, s.candles, Date.now());
   const marked = await Promise.all(
     positions.map(async (p) => {
       const instrument = await getInstrument(s.db, p.instrumentId);
@@ -398,13 +413,20 @@ async function portfolioSummary(c: AppContext, settings: Settings) {
         mark = quote?.last ?? candles[candles.length - 1]?.c ?? null;
       }
       const price = mark ?? p.avgPrice;
+      // Prices in the quote currency; values and results in the account currency.
+      const liveFx = valuationFx(fx, instrument?.quoteCurrency ?? account.currency, account.currency);
+      const rate = liveFx ?? entryFx(p);
+      const marketValue = p.quantity * price * rate;
+      const unrealizedPnl = marketValue - p.entryValue - p.entryFees;
       return {
         ...p,
         instrument,
         markPrice: mark,
-        marketValue: p.quantity * price,
-        unrealizedPnl: (price - p.avgPrice) * p.quantity - p.entryFees,
-        unrealizedPct: price / p.avgPrice - 1,
+        fx: rate,
+        fxEstimated: liveFx === null,
+        marketValue,
+        unrealizedPnl,
+        unrealizedPct: p.entryValue > 0 ? unrealizedPnl / p.entryValue : 0,
       };
     }),
   );

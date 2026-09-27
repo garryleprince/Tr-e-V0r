@@ -198,6 +198,8 @@ export function runBacktest(cfg: BacktestConfig): BacktestResult {
       position,
       equity: eq,
       riskPct: limits.maxRiskPerTradePct,
+      // A backtest runs in the instrument's own currency.
+      fx: 1,
       decisionId: null,
     });
     if (plan.kind === 'none') continue;
@@ -211,7 +213,7 @@ export function runBacktest(cfg: BacktestConfig): BacktestResult {
       cash,
       peakEquity: peak,
       dayStartEquity: dayStart,
-      positions: position ? [{ instrumentId: instrument.id, quantity: position.quantity, markPrice: bar.c }] : [],
+      positions: position ? [{ instrumentId: instrument.id, quantity: position.quantity, markPrice: bar.c, fx: 1 }] : [],
       consecutiveLosses,
       lastLossAt,
       newOrdersToday: ordersToday,
@@ -226,6 +228,7 @@ export function runBacktest(cfg: BacktestConfig): BacktestResult {
         avgDollarVolume: snapshot.avgDollarVolume20,
         bid: null,
         ask: null,
+        fx: 1,
       },
     });
     if (!order) {

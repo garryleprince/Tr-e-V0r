@@ -47,6 +47,8 @@
     // "halt" force l'arrêt d'urgence de toute opération, quel que soit l'état stocké.
     "KILL_SWITCH": "off",
     // "live" en production. "fixture" n'est accepté qu'en développement local.
-    "MARKET_DATA_MODE": "live"
+    "MARKET_DATA_MODE": "live",
+    // Appels Alpha Vantage autorisés par jour UTC (clé gratuite : 25). À relever avec une clé payante.
+    "ALPHAVANTAGE_DAILY_LIMIT": "25"
   }
 }

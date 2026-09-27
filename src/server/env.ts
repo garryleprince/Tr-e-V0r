@@ -14,6 +14,8 @@ export interface Env {
   readonly LIVE_TRADING_ENABLED?: string;
   readonly KILL_SWITCH?: string;
   readonly MARKET_DATA_MODE?: string;
+  /** Alpha Vantage calls allowed per UTC day (free key: 25; raise it with a premium key). */
+  readonly ALPHAVANTAGE_DAILY_LIMIT?: string;
 
   // Secrets
   readonly SETUP_TOKEN?: string;
@@ -30,6 +32,7 @@ export interface RuntimeConfig {
   /** Must be false in V0.1: no live venue exists. */
   readonly liveTradingEnabled: boolean;
   readonly marketDataMode: 'live' | 'fixture';
+  readonly alphaVantageDailyLimit: number;
   readonly setupToken: string | null;
   readonly sessionPepper: string;
   readonly keys: {
@@ -57,6 +60,7 @@ export function readConfig(env: Env): RuntimeConfig {
     killSwitchForced: (env.KILL_SWITCH ?? '').trim().toLowerCase() === 'halt',
     liveTradingEnabled: env.LIVE_TRADING_ENABLED === 'true',
     marketDataMode: mode,
+    alphaVantageDailyLimit: positiveInt(env.ALPHAVANTAGE_DAILY_LIMIT) ?? 25,
     setupToken: nonEmpty(env.SETUP_TOKEN),
     sessionPepper: pepper ?? 'dev-only-pepper',
     keys: {
@@ -70,4 +74,9 @@ export function readConfig(env: Env): RuntimeConfig {
 function nonEmpty(v: string | undefined): string | null {
   const t = v?.trim();
   return t ? t : null;
+}
+
+function positiveInt(v: string | undefined): number | null {
+  const n = Number(v?.trim());
+  return Number.isInteger(n) && n > 0 ? n : null;
 }

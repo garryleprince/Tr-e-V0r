@@ -1,3 +1,4 @@
+import type { AccountCurrency } from '../../core/domain/fx';
 import { DurableObject } from 'cloudflare:workers';
 import type { Mode, TradingState } from '../../core/domain/trading';
 import { readConfig, type Env } from '../env';
@@ -40,7 +41,7 @@ export class TradingDesk extends DurableObject<Env> {
     return this.queue.run(() => this.core().closeManually(positionId, market));
   }
 
-  resetPaper(startingCash: number, stepUp: boolean) {
-    return this.queue.run(() => this.core().resetPaper(startingCash, stepUp));
+  resetPaper(startingCash: number, stepUp: boolean, currency?: AccountCurrency) {
+    return this.queue.run(() => this.core().resetPaper(startingCash, stepUp, currency));
   }
 }

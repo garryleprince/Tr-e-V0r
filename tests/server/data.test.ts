@@ -1,17 +1,18 @@
 import type { Instrument } from '../../src/core/domain/market';
 import { DAY_MS, utcDayStart } from '../../src/core/domain/time';
-import { CandleService } from '../../src/server/data/candle-service';
+import { CandleService, expectedLatestBarClose } from '../../src/server/data/candle-service';
 import { FixtureProvider } from '../../src/server/data/fixture';
 import {
   aggregateCandles,
   AlphaVantageProvider,
   CoinbaseProvider,
   parseAlphaVantageDaily,
+  parseAlphaVantageFxDaily,
   parseCoinbaseRow,
   parseKrakenRow,
 } from '../../src/server/data/providers';
 import { ProviderError } from '../../src/server/data/types';
-import { getInstrument } from '../../src/server/db/core';
+import { getInstrument, latestFxRates, recordVendorCall, vendorCallsToday } from '../../src/server/db/core';
 import { syntheticCandles } from '../helpers/candles';
 import { TestD1 } from '../helpers/d1';
 import { clock, FakeProvider } from '../helpers/server';
@@ -57,6 +58,74 @@ describe('adaptateurs : formats des fournisseurs', () => {
     } catch (err) {
       expect((err as ProviderError).kind).toBe('rate_limited');
     }
+  });
+
+  it('Alpha Vantage FX_DAILY : série de change lue, sans volume', () => {
+    const k = parseAlphaVantageFxDaily({
+      'Time Series FX (Daily)': {
+        '2026-09-25': { '1. open': '1.13760', '2. high': '1.14110', '3. low': '1.13660', '4. close': '1.13910' },
+        '2026-09-24': { '1. open': '1.13780', '2. high': '1.13990', '3. low': '1.13580', '4. close': '1.13790' },
+      },
+    });
+    expect(k).toHaveLength(2);
+    expect(k[1]!.c).toBe(1.1391);
+    expect(k[1]!.v).toBe(0);
+    expect(k[0]!.t).toBeLessThan(k[1]!.t);
+  });
+
+  it('Alpha Vantage : quota du jour vérifié AVANT l’appel, compteur partagé en base', async () => {
+    const t = new TestD1();
+    const db = t.asD1();
+    const now = Date.UTC(2026, 8, 28, 1);
+    let calls = 0;
+    const payload = { 'Time Series (Daily)': { '2026-09-25': { '1. open': '1', '2. high': '2', '3. low': '0.5', '4. close': '1.5', '5. volume': '10' } } };
+    const p = new AlphaVantageProvider(
+      async () => {
+        calls++;
+        return new Response(JSON.stringify(payload));
+      },
+      'key',
+      {
+        sleep: async () => undefined,
+        beforeCall: async () => {
+          if ((await vendorCallsToday(db, 'alphavantage', now)) >= 1) throw new ProviderError('alphavantage', 'quota du jour atteint', 'rate_limited');
+          await recordVendorCall(db, 'alphavantage', now);
+        },
+      },
+    );
+    const spy = { ...btc, id: 'alphavantage:SPY', provider: 'alphavantage', symbol: 'SPY', assetClass: 'etf' as const };
+    expect(await p.fetchCandles(spy, '1d', 10)).toHaveLength(1);
+    await expect(p.fetchCandles(spy, '1d', 10)).rejects.toThrow(/quota/);
+    expect(calls).toBe(1);
+    expect(await vendorCallsToday(db, 'alphavantage', now)).toBe(1);
+  });
+
+  it('jours ouvrés : pas de bougie attendue le week-end pour les actions et le change', () => {
+    const sunday = Date.UTC(2026, 8, 27, 12); // dimanche
+    const fridayBarClose = Date.UTC(2026, 8, 26); // la bougie du vendredi 25 se clôt samedi 00:00
+    const equity = { ...btc, id: 'alphavantage:SPY', assetClass: 'etf' as const };
+    const fx = { ...btc, id: 'alphavantage:EURUSD', assetClass: 'fx' as const };
+    expect(expectedLatestBarClose(equity, '1d', sunday)).toBe(fridayBarClose);
+    expect(expectedLatestBarClose(fx, '1d', sunday)).toBe(fridayBarClose);
+    // La crypto cote tous les jours : la bougie de samedi est attendue.
+    expect(expectedLatestBarClose(btc, '1d', sunday)).toBe(Date.UTC(2026, 8, 27));
+    // En semaine, rien ne change.
+    const wednesday = Date.UTC(2026, 8, 30, 12);
+    expect(expectedLatestBarClose(equity, '1d', wednesday)).toBe(Date.UTC(2026, 8, 30));
+  });
+
+  it('taux de change : le dernier connu sert à valoriser, seul un taux récent permet d’ouvrir', async () => {
+    const t = new TestD1();
+    const db = t.asD1();
+    const bar = Date.UTC(2026, 8, 25);
+    t.raw
+      .prepare("INSERT INTO candles (instrument_id, timeframe, t, o, h, l, c, v, source, fetched_at) VALUES ('alphavantage:EURUSD', '1d', ?, 1.14, 1.15, 1.13, 1.14, 0, 'test', ?)")
+      .run(bar, bar);
+    const fresh = await latestFxRates(db, bar + 2 * DAY_MS);
+    expect(fresh.freshRates.EURUSD).toBe(1.14);
+    const stale = await latestFxRates(db, bar + 10 * DAY_MS);
+    expect(stale.rates.EURUSD).toBe(1.14);
+    expect(stale.freshRates.EURUSD).toBeUndefined();
   });
 
   it('Alpha Vantage sans clé : non configuré, aucun appel réseau', async () => {

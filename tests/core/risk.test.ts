@@ -43,6 +43,7 @@ function state(over: Partial<RiskState> = {}): RiskState {
       avgDollarVolume: 500_000_000,
       bid: 1999.5,
       ask: 2000.5,
+      fx: 1,
     },
     ...over,
   };
@@ -155,9 +156,9 @@ describe('Risk Engine — ouvertures', () => {
   it('nombre de positions et d’ordres du jour', () => {
     const full = state({
       positions: [
-        { instrumentId: 'a:A', quantity: 1, markPrice: 100 },
-        { instrumentId: 'b:B', quantity: 1, markPrice: 100 },
-        { instrumentId: 'c:C', quantity: 1, markPrice: 100 },
+        { instrumentId: 'a:A', quantity: 1, markPrice: 100, fx: 1 },
+        { instrumentId: 'b:B', quantity: 1, markPrice: 100, fx: 1 },
+        { instrumentId: 'c:C', quantity: 1, markPrice: 100, fx: 1 },
       ],
     });
     expect(failed(evaluateIntent(buy(), full))).toContain('max_positions');
@@ -166,7 +167,7 @@ describe('Risk Engine — ouvertures', () => {
 
   it('corrélation élevée avec une position existante', () => {
     const s = state({
-      positions: [{ instrumentId: 'coinbase:BTC-USD', quantity: 0.01, markPrice: 60_000 }],
+      positions: [{ instrumentId: 'coinbase:BTC-USD', quantity: 0.01, markPrice: 60_000, fx: 1 }],
       correlations: { 'coinbase:BTC-USD': 0.92 },
     });
     expect(failed(evaluateIntent(buy(), s))).toContain('correlation');
@@ -183,11 +184,21 @@ describe('Risk Engine — ouvertures', () => {
   it('exposition totale et cash plafonnent la quantité', () => {
     const exposed = state({
       cash: 4500,
-      positions: [{ instrumentId: 'a:A', quantity: 55, markPrice: 100 }], // 5 500 $ exposés
+      positions: [{ instrumentId: 'a:A', quantity: 55, markPrice: 100, fx: 1 }], // 5 500 $ exposés
     });
     const r = evaluateIntent(buy({ quantity: 0.8 }), exposed);
     // remaining exposure budget: 6 000 − 5 500 = 500 $ → 0.25 ETH
     expect(r.order!.quantity).toBe(0.25);
+  });
+
+  it('multi-devises : taux inconnu = ouverture refusée ; plafonds convertis en devise du compte', () => {
+    const noFx = evaluateIntent(buy(), state({ market: { ...state().market, fx: null } }));
+    expect(noFx.verdict.outcome).toBe('REJECTED');
+    expect(failed(noFx)).toContain('fx_rate');
+    // 1 unité de devise de cotation = 2 unités de compte : la taille maximale
+    // (20 % de 10 000 = 2 000) n'autorise plus que 0,5 à 2 000 × 2.
+    const doubled = evaluateIntent(buy({ quantity: 5 }), state({ market: { ...state().market, fx: 2 } }));
+    expect(doubled.order!.quantity).toBeLessThanOrEqual(0.5);
   });
 
   it('refuse si la quantité tombe sous le minimum après les limites', () => {
@@ -208,7 +219,7 @@ describe('Risk Engine — ouvertures', () => {
 });
 
 describe('Risk Engine — réductions (freins)', () => {
-  const held = state({ positions: [{ instrumentId: instrument.id, quantity: 0.5, markPrice: 2000 }] });
+  const held = state({ positions: [{ instrumentId: instrument.id, quantity: 0.5, markPrice: 2000, fx: 1 }] });
   const sell = (over: Partial<OrderIntent> = {}) =>
     buy({ side: 'SELL', reduceOnly: true, stopLoss: null, takeProfit: null, ...over });
 

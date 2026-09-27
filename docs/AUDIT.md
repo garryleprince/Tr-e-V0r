@@ -6,7 +6,7 @@ Légende :
 - ⏳ prévu (version indiquée) ;
 - ❌ exclu volontairement.
 
-« Vérifié » veut dire vérifié dans l'environnement de développement : 127 tests Vitest,
+« Vérifié » veut dire vérifié dans l'environnement de développement : 135 tests Vitest,
 plus un parcours complet sur iPhone émulé contre le vrai Worker (`wrangler dev`, D1
 locale) en données de démonstration. Ce qui n'a **pas** pu être vérifié est listé dans
 [`LIMITES.md`](LIMITES.md).
@@ -69,6 +69,18 @@ locale) en données de démonstration. Ce qui n'a **pas** pu être vérifié est
 | Courbe de capital et drawdown | ✅ | Deux panneaux, jamais deux axes |
 | Simulation avec frais et glissement | ✅ | Même simulateur pour le paper et le backtest |
 | Surveillance des stops et objectifs | ✅ toutes les 15 min pour la crypto ; quotidienne pour les actions (limite du fournisseur gratuit) |
+
+## 4 bis. Multi-marchés et multi-devises (V0.2, étape 1)
+
+| Exigence | État | Détail |
+| --- | --- | --- |
+| Crypto | ✅ | 9 paires USD sur Coinbase (Kraken en secours) |
+| Actions US | 🟡 | 7 actions et 2 ETF ; format Alpha Vantage vérifié, appels en direct non vérifiables ici (hôte bloqué) |
+| Actions européennes | 🟡 | 11 actions (Paris, Xetra, Amsterdam), cotées en EUR. `MC.PAR`, `SAP.DEX`, `ASML.AMS` vérifiés en direct le 27/09/2026 ; les autres suivent la même convention |
+| Compte en euros, conversion des actifs en dollars | ✅ | Coût d'entrée, cash, capital et résultats en devise du compte ; taux enregistré à chaque exécution ; effet de change inclus (tests `ledger`, `desk`) |
+| Taux indisponible ou périmé | ✅ | Ouverture refusée (contrôle `fx_rate` du Risk Engine) ; les freins passent au dernier taux connu ou au taux d'entrée |
+| Quota Alpha Vantage protégé | ✅ | 1 appel par seconde, plafond journalier compté en base, pas de requête le week-end |
+| Budget IA illimité | ✅ | Choix du propriétaire, réglable ; le plafond de la console du fournisseur reste la seule limite |
 
 ## 5. Backtesting et mémoire
 

@@ -10,9 +10,11 @@ import { getJson, ProviderError, type FetchLike, type MarketDataProvider } from 
  *   (no 4 h: it is built by aggregating 1 h bars).
  * - Kraken: public, no key. OHLC rows: [time(s), open, high, low, close, vwap, volume, count],
  *   strings; the last row is the bar still forming. Used as fallback for crypto.
- * - Alpha Vantage: key required. Free tier: 25 requests/day and only the last 100 daily
- *   bars (`outputsize=full` is a premium feature, checked on 2026-09-26) — so the 200-bar
- *   moving average is not available for equities on the free tier.
+ * - Alpha Vantage: key required. Free tier: 25 requests/day, 1 request/second, and only
+ *   the last 100 daily bars (`outputsize=full` is a premium feature, checked on
+ *   2026-09-26) — so the 200-bar moving average is not available for equities on the free
+ *   tier. US equities (`AAPL`), European equities with the exchange suffix (`MC.PAR`,
+ *   `SAP.DEX`, `ASML.AMS`, verified 2026-09-27) and daily FX (`FX_DAILY`, EUR/USD).
  */
 
 // ------------------------------------------------------------------ Coinbase
@@ -77,7 +79,19 @@ export function parseCoinbaseRow(row: unknown): Candle | null {
 // -------------------------------------------------------------------- Kraken
 
 const KRAKEN_INTERVAL: Partial<Record<Timeframe, number>> = { '15m': 15, '1h': 60, '4h': 240, '1d': 1440 };
-const KRAKEN_PAIRS: Record<string, string> = { 'BTC-USD': 'XBTUSD', 'ETH-USD': 'ETHUSD', 'SOL-USD': 'SOLUSD' };
+const KRAKEN_PAIRS: Record<string, string> = {
+  'BTC-USD': 'XBTUSD',
+  'ETH-USD': 'ETHUSD',
+  'SOL-USD': 'SOLUSD',
+  'XRP-USD': 'XRPUSD',
+  'ADA-USD': 'ADAUSD',
+  'DOGE-USD': 'XDGUSD',
+  'AVAX-USD': 'AVAXUSD',
+  'LINK-USD': 'LINKUSD',
+  'DOT-USD': 'DOTUSD',
+  // Fiat FX, fallback for the conversion rate when Alpha Vantage is unavailable.
+  EURUSD: 'EURUSD',
+};
 
 export class KrakenProvider implements MarketDataProvider {
   readonly id = 'kraken';
@@ -85,7 +99,7 @@ export class KrakenProvider implements MarketDataProvider {
   constructor(private readonly fetcher: FetchLike, private readonly baseUrl = 'https://api.kraken.com') {}
 
   supports(instrument: Instrument, tf: Timeframe): boolean {
-    return instrument.assetClass === 'crypto' && tf in KRAKEN_INTERVAL && instrument.symbol in KRAKEN_PAIRS;
+    return (instrument.assetClass === 'crypto' || instrument.assetClass === 'fx') && tf in KRAKEN_INTERVAL && instrument.symbol in KRAKEN_PAIRS;
   }
 
   async fetchCandles(instrument: Instrument, tf: Timeframe, limit: number, signal?: AbortSignal): Promise<Candle[]> {
@@ -129,25 +143,64 @@ export function parseKrakenRow(row: unknown): Candle | null {
 
 // ------------------------------------------------------------- Alpha Vantage
 
+/** Spacing between two Alpha Vantage calls from this isolate (free tier: 1 per second). */
+export const ALPHAVANTAGE_MIN_SPACING_MS = 1_100;
+let avQueue: Promise<unknown> = Promise.resolve();
+let avLastCall = 0;
+
+export interface AlphaVantageOptions {
+  /** Called before every request; throws when the daily quota is spent. */
+  readonly beforeCall?: () => Promise<void>;
+  readonly baseUrl?: string;
+  /** Test hook: how to wait (defaults to a real timer). */
+  readonly sleep?: (ms: number) => Promise<void>;
+}
+
 export class AlphaVantageProvider implements MarketDataProvider {
   readonly id = 'alphavantage';
   readonly label = 'Alpha Vantage';
+  private readonly baseUrl: string;
   constructor(
     private readonly fetcher: FetchLike,
     private readonly apiKey: string | null,
-    private readonly baseUrl = 'https://www.alphavantage.co',
-  ) {}
+    private readonly opts: AlphaVantageOptions = {},
+  ) {
+    this.baseUrl = opts.baseUrl ?? 'https://www.alphavantage.co';
+  }
 
   supports(instrument: Instrument, tf: Timeframe): boolean {
-    return (instrument.assetClass === 'equity' || instrument.assetClass === 'etf') && tf === '1d';
+    return (instrument.assetClass === 'equity' || instrument.assetClass === 'etf' || instrument.assetClass === 'fx') && tf === '1d';
   }
 
   async fetchCandles(instrument: Instrument, tf: Timeframe, limit: number, signal?: AbortSignal): Promise<Candle[]> {
     if (!this.apiKey) throw new ProviderError(this.id, 'clé ALPHAVANTAGE_API_KEY absente', 'not_configured');
     if (tf !== '1d') throw new ProviderError(this.id, `unité ${tf} non prise en charge`, 'unsupported');
-    const url = `${this.baseUrl}/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(instrument.symbol)}&outputsize=compact&apikey=${encodeURIComponent(this.apiKey)}`;
-    const payload = (await getJson(this.fetcher, this.id, url, signal)) as Record<string, unknown>;
-    return parseAlphaVantageDaily(payload).slice(-limit);
+    const key = encodeURIComponent(this.apiKey);
+    if (instrument.assetClass === 'fx') {
+      const [from, to] = [instrument.symbol.slice(0, 3), instrument.symbol.slice(3, 6)];
+      const url = `${this.baseUrl}/query?function=FX_DAILY&from_symbol=${from}&to_symbol=${to}&outputsize=compact&apikey=${key}`;
+      return parseAlphaVantageFxDaily(await this.call(url, signal)).slice(-limit);
+    }
+    const url = `${this.baseUrl}/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(instrument.symbol)}&outputsize=compact&apikey=${key}`;
+    return parseAlphaVantageDaily(await this.call(url, signal)).slice(-limit);
+  }
+
+  /**
+   * Calls are serialised and spaced (the free tier answers a burst with a
+   * throttling notice), and counted against the daily quota before being sent.
+   */
+  private call(url: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    const sleep = this.opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const run = async () => {
+      const wait = avLastCall + ALPHAVANTAGE_MIN_SPACING_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+      await this.opts.beforeCall?.();
+      avLastCall = Date.now();
+      return (await getJson(this.fetcher, this.id, url, signal)) as Record<string, unknown>;
+    };
+    const next = avQueue.then(run, run);
+    avQueue = next.catch(() => undefined);
+    return next;
   }
 }
 
@@ -174,6 +227,29 @@ export function parseAlphaVantageDaily(payload: Record<string, unknown>): Candle
       v: Number(row['5. volume']),
     };
     if ([k.t, k.o, k.h, k.l, k.c, k.v].every(Number.isFinite)) out.push(k);
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/** FX_DAILY: open/high/low/close, no volume (recorded as 0). */
+export function parseAlphaVantageFxDaily(payload: Record<string, unknown>): Candle[] {
+  const notice = payload.Note ?? payload.Information ?? payload['Error Message'];
+  if (typeof notice === 'string') {
+    throw new ProviderError('alphavantage', notice.slice(0, 200), /frequency|limit|premium/i.test(notice) ? 'rate_limited' : 'http');
+  }
+  const series = payload['Time Series FX (Daily)'];
+  if (!series || typeof series !== 'object') throw new ProviderError('alphavantage', 'série de change absente', 'bad_payload');
+  const out: Candle[] = [];
+  for (const [date, row] of Object.entries(series as Record<string, Record<string, string>>)) {
+    const k = {
+      t: Date.parse(`${date}T00:00:00Z`),
+      o: Number(row['1. open']),
+      h: Number(row['2. high']),
+      l: Number(row['3. low']),
+      c: Number(row['4. close']),
+      v: 0,
+    };
+    if ([k.t, k.o, k.h, k.l, k.c].every(Number.isFinite)) out.push(k);
   }
   return out.sort((a, b) => a.t - b.t);
 }

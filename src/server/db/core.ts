@@ -5,7 +5,8 @@ import {
   type SettingsKey,
 } from '../../core/domain/settings';
 import { InstrumentSchema, type Candle, type Instrument, type Quote } from '../../core/domain/market';
-import type { Timeframe } from '../../core/domain/time';
+import { DAY_MS, type Timeframe } from '../../core/domain/time';
+import { FX_INSTRUMENTS, fxFactor, type FxRates } from '../../core/domain/fx';
 import { log, newId, parseJson } from '../util';
 
 /**
@@ -125,6 +126,74 @@ export async function getCandles(
     .map((r) => ({ t: num(r.t), o: num(r.o), h: num(r.h), l: num(r.l), c: num(r.c), v: num(r.v) }))
     .reverse();
   return { candles, source: results[0] ? str(results[0].source) : null };
+}
+
+// ------------------------------------------------------------------------ FX
+
+/**
+ * A daily FX bar older than this is not used to OPEN a position (weekends and
+ * holidays included). Valuations keep using the last known rate and say so.
+ */
+export const FX_MAX_AGE_MS = 5 * DAY_MS;
+
+export interface FxView {
+  /** Every known rate, for valuation. */
+  readonly rates: FxRates;
+  /** Rates fresh enough to open a position. */
+  readonly freshRates: FxRates;
+  /** Close time of the bar behind each rate. */
+  readonly asOf: Readonly<Record<string, number>>;
+}
+
+/** Latest daily close of each FX instrument (cached by the candle service). */
+export async function latestFxRates(db: D1Database, now: number): Promise<FxView> {
+  const rates: Record<string, number> = {};
+  const freshRates: Record<string, number> = {};
+  const asOf: Record<string, number> = {};
+  for (const [pair, instrumentId] of Object.entries(FX_INSTRUMENTS)) {
+    const r = await db
+      .prepare("SELECT t, c FROM candles WHERE instrument_id = ? AND timeframe = '1d' ORDER BY t DESC LIMIT 1")
+      .bind(instrumentId)
+      .first<Row>();
+    if (!r) continue;
+    const closeTime = num(r.t) + DAY_MS;
+    rates[pair] = num(r.c);
+    asOf[pair] = closeTime;
+    if (now - closeTime <= FX_MAX_AGE_MS) freshRates[pair] = num(r.c);
+  }
+  return { rates, freshRates, asOf };
+}
+
+/** Conversion for valuation: last known rate, or null. */
+export function valuationFx(view: FxView, from: string, to: string): number | null {
+  return fxFactor(from, to, view.rates);
+}
+
+/** Conversion allowed for an opening: fresh rate only, or null (fail-closed). */
+export function openingFx(view: FxView, from: string, to: string): number | null {
+  return fxFactor(from, to, view.freshRates);
+}
+
+// -------------------------------------------------------------- vendor quota
+
+/** Counts one call for `vendor` today; returns the count BEFORE this call. */
+export async function recordVendorCall(db: D1Database, vendor: string, now: number): Promise<number> {
+  const day = Math.floor(now / DAY_MS) * DAY_MS;
+  const r = await db
+    .prepare(
+      `INSERT INTO vendor_calls (vendor, day, calls) VALUES (?, ?, 1)
+       ON CONFLICT(vendor, day) DO UPDATE SET calls = calls + 1
+       RETURNING calls`,
+    )
+    .bind(vendor, day)
+    .first<Row>();
+  return r ? num(r.calls) - 1 : 0;
+}
+
+export async function vendorCallsToday(db: D1Database, vendor: string, now: number): Promise<number> {
+  const day = Math.floor(now / DAY_MS) * DAY_MS;
+  const r = await db.prepare('SELECT calls FROM vendor_calls WHERE vendor = ? AND day = ?').bind(vendor, day).first<Row>();
+  return r ? num(r.calls) : 0;
 }
 
 export interface FetchRecord {

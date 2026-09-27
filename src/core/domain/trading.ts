@@ -67,13 +67,16 @@ export interface OpenPosition {
   readonly instrumentId: string;
   readonly mode: Mode;
   readonly quantity: number;
+  /** Average entry price, quote currency. */
   readonly avgPrice: number;
+  /** Cost basis excluding fees, ACCOUNT currency (converted at each fill's rate). */
+  readonly entryValue: number;
   readonly stopLoss: number | null;
   readonly takeProfit: number | null;
   readonly expiresAt: number | null;
   readonly openedAt: number;
   readonly decisionId: string | null;
-  /** Fees paid on entry, deducted when computing the trade's net result. */
+  /** Fees paid on entry, account currency; deducted from the trade's net result. */
   readonly entryFees: number;
 }
 
@@ -88,7 +91,7 @@ export interface ClosedTrade {
   readonly exitPrice: number;
   readonly openedAt: number;
   readonly closedAt: number;
-  /** Net of all fees, quote currency. */
+  /** Net of all fees, account currency (includes the currency effect). */
   readonly pnl: number;
   readonly returnPct: number;
   readonly exitReason: ExitReason;
